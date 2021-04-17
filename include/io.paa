@@ -1,0 +1,39 @@
+#Fprint_str
+addr
+push_l 8
+sys @print
+ret
+
+#Fprint_string
+copy
+push_l 8
+i_add
+copy
+push_l 8
+i_add
+swap
+deref
+sys @print
+nop
+call .Pdrop
+ret
+
+#Fprintln_str
+call .Fprint_str
+clean
+call .Pprintln
+ret
+
+#Fprintln_string
+call .Fprint_string
+clean
+call .Pprintln
+ret
+
+#Pprintln
+push_l '720575940379279360
+addr
+push_l 1
+sys @print
+sys @flush
+ret

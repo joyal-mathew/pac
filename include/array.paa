@@ -1,0 +1,10 @@
+#Pmake_array
+pull 0
+sys @alloc
+pull 8
+push 0
+sys @memwrite
+push 0
+clear
+push 8
+ret
