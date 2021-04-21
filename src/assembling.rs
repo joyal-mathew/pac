@@ -1,10 +1,10 @@
 use crate::{ compiling::Compiler, utils::{ Result, Serial } };
 use std::collections::HashMap;
 
-const INSTRUCTIONS: [&str; 53] = [
+const INSTRUCTIONS: [&str; 54] = [
     "nop",
     "push", "push_l", "pop", "pull", "clean", "clear", "copy", "swap",
-    "unoffset", "offset", "call", "sys", "ret",
+    "unoffset", "offset", "call", "call_s", "sys", "ret",
     "jmp", "br",
     "addr", "deref", "store",
     "fti", "itf",
@@ -81,6 +81,8 @@ impl Assembler {
                 return err!("invalid assembly instruction: {}", command);
             }
         }
+
+        dbg!(&self.labels);
 
         for command in commands {
             if command.starts_with('#') {

@@ -1,10 +1,12 @@
 #Pdrop
 copy
+copy
 deref
 br .Sdrop_leave
 sys @dealloc
 push_l 0
 #Sdrop_leave
+clean
 ret
 
 #Pincref

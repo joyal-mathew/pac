@@ -67,6 +67,7 @@ pub enum Type {
     Str,
     String,
     Array(Box<Type>),
+    Function(Box<Type>, Vec<Type>),
 
     Void,
     ArrayInfer,

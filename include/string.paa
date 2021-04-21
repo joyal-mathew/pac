@@ -40,7 +40,7 @@ swap
 store
 ret
 
-#Fget_len
+#Fstr_len
 pull 0
 push_l 8
 i_add

@@ -25,10 +25,12 @@ void flush() {
 
 void alloc() {
     AS(size_t, op_stack + sp - 8) = (size_t) malloc(AS(size_t, op_stack + sp - 8));
+    printf("ALLOC{%llu}\n", AS(size_t, op_stack + sp - 8));
 }
 
 void dealloc() {
     sp -= 8;
+    printf("DEALLOC{%llu}\n", AS(size_t, op_stack + sp));
     free((void *) AS(size_t, op_stack + sp));
 }
 

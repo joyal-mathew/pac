@@ -37,7 +37,6 @@ pub enum Symbol {
     String(String),
 
     Identifier(String),
-    Call(String, Vec<Expression>),
     Array(Vec<Expression>),
     Type(Type),
 }
@@ -63,6 +62,8 @@ pub enum Statement {
 #[derive(Debug)]
 pub enum Expression {
     Term(Symbol),
+    Call(Box<Expression>, Vec<Expression>),
+    Index(Box<Expression>, Box<Expression>),
     BinaryOperation(Operation, Box<Expression>, Box<Expression>),
     UnaryOperation(Operation, Box<Expression>),
 }
@@ -279,13 +280,50 @@ impl Parser {
     );
 
     fn cast(&mut self) -> Result<Expression> {
-        let mut node = self.term()?;
+        let mut node = self.post_group()?;
 
         loop {
             match self.current {
                 Token::Operator(Operator::Casting) => {
                     self.advance()?;
                     node = Expression::BinaryOperation(Operation::Cast, Box::new(node), Box::new(Expression::Term(Symbol::Type(self.get_type()?))));
+                }
+                _ => break,
+            }
+        }
+
+        Ok(node)
+    }
+
+    fn post_group(&mut self) -> Result<Expression> {
+        let mut node = self.term()?;
+
+        loop {
+            match self.current {
+                Token::Operator(Operator::OpenParenthesis) => {
+                    self.advance()?;
+                    let mut params = Vec::new();
+
+                    if self.current != Token::Operator(Operator::CloseParenthesis) {
+                        params.push(self.assignment()?);
+                    }
+
+                    loop {
+                        if let Token::Operator(Operator::CloseParenthesis) = self.current {
+                            break;
+                        }
+
+                        expect!(self, Token::Operator(Operator::Comma));
+                        params.push(self.assignment()?);
+                    }
+
+                    expect!(self, Token::Operator(Operator::CloseParenthesis));
+                    node = Expression::Call(Box::new(node), params);
+                }
+                Token::Operator(Operator::OpenBracket) => {
+                    self.advance()?;
+                    node = Expression::Index(Box::new(node), Box::new(self.term()?));
+                    expect!(self, Token::Operator(Operator::CloseBracket));
                 }
                 _ => break,
             }
@@ -319,31 +357,7 @@ impl Parser {
             Token::FloatLiteral(f) => Ok(Expression::Term(Symbol::Float(f))),
             Token::StrLiteral(s) => Ok(Expression::Term(Symbol::Str(s))),
             Token::StringLiteral(s) => Ok(Expression::Term(Symbol::String(s))),
-            Token::Identifier(s) => {
-                match self.current { // TODO: fix with indexing
-                    Token::Operator(Operator::OpenParenthesis) => {
-                        self.advance()?;
-                        let mut params = Vec::new();
-
-                        if self.current != Token::Operator(Operator::CloseParenthesis) {
-                            params.push(self.assignment()?);
-                        }
-
-                        loop {
-                            if let Token::Operator(Operator::CloseParenthesis) = self.current {
-                                break;
-                            }
-
-                            expect!(self, Token::Operator(Operator::Comma));
-                            params.push(self.assignment()?);
-                        }
-
-                        expect!(self, Token::Operator(Operator::CloseParenthesis));
-                        Ok(Expression::Term(Symbol::Call(s, params)))
-                    }
-                    _ => Ok(Expression::Term(Symbol::Identifier(s)))
-                }
-            },
+            Token::Identifier(s) => Ok(Expression::Term(Symbol::Identifier(s))),
             Token::Operator(Operator::Subtraction) => Ok(Expression::UnaryOperation(Operation::Negate, Box::new(self.term()?))),
             Token::Operator(Operator::LogicalNot) => Ok(Expression::UnaryOperation(Operation::LogicalNot, Box::new(self.term()?))),
             Token::Operator(Operator::BitwiseNot) => Ok(Expression::UnaryOperation(Operation::BitwiseNot, Box::new(self.term()?))),

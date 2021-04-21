@@ -12,6 +12,7 @@ use std::{ fs, io::prelude::Write };
 
 /* TODO:
  * arrays (figure out how to implement the type, c-like maybe?)
+ * make emit a macro and auto format
  * string/array operations
  * structs
  * a->f() notation

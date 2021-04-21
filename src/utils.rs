@@ -1,4 +1,4 @@
-use std::{ result, io };
+use std::result;
 
 macro_rules! parse_rule {
     (name = $name: ident, parent = $parent: ident, $($operator: pat => $operation: expr),*) => {
@@ -55,13 +55,4 @@ impl Serial for i64 {
 impl Serial for f64 {
     fn serialize(self) -> [u8; 8] { self.to_le_bytes() }
     fn deserialize(bytes: [u8; 8]) -> f64 { Self::from_le_bytes(bytes) }
-}
-
-#[allow(dead_code)]
-pub fn input(prompt: &str) -> io::Result<String> {
-    let mut out = String::new();
-    print!("{}", prompt);
-    io::Write::flush(&mut io::stdout())?;
-    io::stdin().read_line(&mut out)?;
-    Ok(out.trim().to_string())
 }

@@ -6,8 +6,8 @@ void debug(char *inst, int len, char *codes, char **v) {
     printf("%s====", inst);
     for (int i = 0; i < len; ++i) {
         printf("\n%c | ", codes[i]);
-        for (int j = 0; j < 32; ++j) {
-            printf("%hhu ", v[i][j]);
+        for (int j = 0; j < 8; ++j) {
+            printf("%llu ", ((size_t **) v)[i][j]);
         }
     }
     printf("\n====");

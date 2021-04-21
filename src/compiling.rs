@@ -1,51 +1,44 @@
 use crate::{ lexing::Type, utils::{ Result, Serial }, parsing::* };
 use std::{ mem, fs, collections::HashMap };
 
-const ALLOCATIONS: [Type; 1] = [ Type::String ];
-
 #[derive(Clone)]
 struct Var {
     ptr: usize,
     type_: Type,
-    assigned: bool
+    assigned: bool,
+    named: bool,
 }
 
-struct Signature {
-    return_type: Type,
-    param_types: Vec<Type>,
-}
+fn create_signature(return_type: Type, params: &Vec<Statement>) -> Type {
+    let mut param_types = Vec::new();
 
-impl Signature {
-    fn new(return_type: Type, params: &Vec<Statement>) -> Self {
-        let mut param_types = Vec::new();
-
-        for param in params {
-            if let Statement::Declaration(t, v) = param {
-                param_types.extend(std::iter::repeat(t.clone()).take(v.len()));
-            }
-        }
-
-        Self {
-            return_type,
-            param_types,
+    for param in params {
+        if let Statement::Declaration(t, v) = param {
+            param_types.extend(std::iter::repeat(t.clone()).take(v.len()));
         }
     }
 
-    fn is_main(&self) -> bool {
-        self.return_type == Type::Void && self.param_types.is_empty()
+    Type::Function(Box::new(return_type), param_types)
+}
+
+fn is_main(sig: &Type) -> bool {
+    if let Type::Function(return_type, param_types) = sig {
+        return **return_type == Type::Void && param_types.is_empty()
     }
+
+    return false;
 }
 
 struct Scope {
     vars: HashMap<String, Var>,
     ptr: usize,
-    allocations: Vec<usize>,
+    allocations: Vec<(usize, Type)>,
 }
 
 impl Scope {
-    fn new() -> Self {
+    fn new(global: &HashMap<String, Var>) -> Self {
         Self {
-            vars: HashMap::new(),
+            vars: global.clone(),
             ptr: 0,
             allocations: Vec::new(),
         }
@@ -60,7 +53,7 @@ impl Scope {
             err!("variable already delcared in this scope")
         }
         else {
-            self.vars.insert(ident, Var { type_, ptr: self.ptr, assigned: false });
+            self.vars.insert(ident, Var { type_, ptr: self.ptr, assigned: false, named: false });
             self.ptr += 8;
             Ok(self.ptr - 8)
         }
@@ -73,24 +66,30 @@ pub struct Compiler {
     data: String,
     program: String,
 
-    functions: HashMap<String, Signature>,
+    functions: HashMap<String, Var>,
     label: usize,
+    would_alloc: [Type; 2],
 
     break_label: Vec<usize>,
     continue_label: Vec<usize>,
 }
 
 impl Compiler {
+    const REF_INC: usize = 1;
+    const REF_DEC: usize = 2;
+    const REF_DROP: usize = 4;
+
     pub fn new(parser: Parser) -> Self {
         let mut functions = HashMap::new();
 
-        functions.insert("print_str".to_string(), Signature { return_type: Type::Void, param_types: vec![Type::Str] });
-        functions.insert("print_string".to_string(), Signature { return_type: Type::Void, param_types: vec![Type::String] });
-        functions.insert("println_str".to_string(), Signature { return_type: Type::Void, param_types: vec![Type::Str] });
-        functions.insert("println_string".to_string(), Signature { return_type: Type::Void, param_types: vec![Type::String] });
-        functions.insert("get_char".to_string(), Signature { return_type: Type::Str, param_types: vec![Type::String, Type::Int] });
-        functions.insert("set_char".to_string(), Signature { return_type: Type::Void, param_types: vec![Type::String, Type::Int, Type::Str] });
-        functions.insert("get_len".to_string(), Signature { return_type: Type::Int, param_types: vec![Type::String] });
+        functions.insert("print_str".to_string(), Var { ptr: 0, type_: Type::Function(Box::new(Type::Void), vec![Type::Str]), assigned: true, named: true });
+        functions.insert("print_string".to_string(), Var { ptr: 0, type_: Type::Function(Box::new(Type::Void), vec![Type::String]), assigned: true, named: true });
+        functions.insert("println_str".to_string(), Var { ptr: 0, type_: Type::Function(Box::new(Type::Void), vec![Type::Str]), assigned: true, named: true });
+        functions.insert("println_string".to_string(), Var { ptr: 0, type_: Type::Function(Box::new(Type::Void), vec![Type::String]), assigned: true, named: true });
+
+        functions.insert("get_char".to_string(), Var { ptr: 0, type_: Type::Function(Box::new(Type::Str), vec![Type::String, Type::Int]), assigned: true, named: true });
+        functions.insert("set_char".to_string(), Var { ptr: 0, type_: Type::Function(Box::new(Type::Void), vec![Type::String, Type::Int, Type::Str]), assigned: true, named: true });
+        functions.insert("str_len".to_string(), Var { ptr: 0, type_: Type::Function(Box::new(Type::Int), vec![Type::String]), assigned: true, named: true });
 
         Self {
             parser,
@@ -98,9 +97,14 @@ impl Compiler {
             program: String::new(),
             functions,
             label: 0,
+            would_alloc: [ Type::String, Type::Array(Box::new(Type::Void)) ],
             break_label: Vec::new(),
             continue_label: Vec::new(),
         }
+    }
+
+    fn requires_alloc(&self, t: &Type) -> bool {
+        self.would_alloc.iter().any(|a| mem::discriminant(a) == mem::discriminant(t))
     }
 
     pub fn compile(&mut self) -> Result<&String> {
@@ -115,11 +119,11 @@ impl Compiler {
                     return err!("redefinition of function");
                 }
                 else {
-                    let sig = Signature::new(return_type.clone(), signature);
-                    if name == "main" && !sig.is_main() {
+                    let sig = create_signature(return_type.clone(), signature);
+                    if name == "main" && !is_main(&sig) {
                         return err!("main function has invalid signature");
                     }
-                    self.functions.insert(name.clone(), sig);
+                    self.functions.insert(name.clone(), Var { ptr: 0, type_: sig, assigned: true, named: true });
                 }
                 _ => unimplemented!()
             }
@@ -147,18 +151,80 @@ impl Compiler {
         Ok(&self.program)
     }
 
+    fn count_refs(&mut self, t: &Type, scope: &Scope, op: usize) {
+        if op & Self::REF_INC != 0 {
+            self.emit("call .Pincref")
+        }
+        if op & Self::REF_DEC != 0 {
+            self.emit("call .Pdecref")
+        }
+        if op & Self::REF_DROP != 0 {
+            self.emit("call .Pdrop")
+        }
+
+        if let Type::Array(inner) = t {
+            if self.requires_alloc(inner) {
+                let l1 = self.get_label();
+                let l2 = self.get_label();
+
+                if scope.ptr != 0 {
+                    self.emit(&format!("offset {}", scope.ptr));
+                }
+                self.emit("copy"); // TODO: move to .paa file
+                self.emit("push_l 8");
+                self.emit("i_add");
+                self.emit("deref");
+                self.emit("push_l 24");
+                self.emit("swap");
+                self.emit("i_sub");
+                self.emit("push_l 8");
+                self.emit("swap");
+                self.emit("i_div");
+                self.emit("pop 8");
+                self.emit("push_l 0");
+                self.emit("pop 0");
+                self.emit("copy");
+                self.emit("push_l 24");
+                self.emit("i_add");
+                self.emit("pop 16");
+                self.emit(&format!("#L{}", l1));
+                self.emit("push 0");
+                self.emit("push 8");
+                self.emit("i_lte");
+                self.emit(&format!("br .L{}", l2));
+                self.emit("push 0");
+                self.emit("push_l 8");
+                self.emit("i_mul");
+                self.emit("push 16");
+                self.emit("i_add");
+                self.emit("deref");
+                self.count_refs(inner, scope, op);
+                self.emit("clean");
+                self.emit("push 0");
+                self.emit("push_l 1");
+                self.emit("i_add");
+                self.emit("pop 0");
+                self.emit(&format!("jmp .L{}", l1));
+                self.emit(&format!("#L{}", l2));
+                if scope.ptr != 0 {
+                    self.emit(&format!("unoffset {}", scope.ptr));
+                }
+            }
+        }
+    }
+
     fn function(&mut self, func: &TopLevelDeclaration) -> Result<()> {
         if let TopLevelDeclaration::Function(name, return_type, params, block) = func {
             self.emit(&format!("\n#F{}", name));
-            let mut scope = Scope::new();
+            let mut scope = Scope::new(&self.functions);
 
             for param in params {
                 if let Statement::Declaration(t, idents) = param {
                     for ident in idents {
                         let ptr = scope.delcare(ident.to_string(), t.clone())?;
-                        if ALLOCATIONS.contains(t) {
-                            scope.allocations.push(ptr);
-                            self.emit("call .Pincref");
+                        if self.requires_alloc(t) {
+                            scope.allocations.push((ptr, t.clone()));
+                            self.count_refs(t, &scope, Self::REF_INC);
                         }
                         self.emit(&format!("pop {}", ptr));
                     }
@@ -169,10 +235,10 @@ impl Compiler {
 
             if let Type::Void = return_type {
                 if !returns {
-                    for allocation in &scope.allocations {
-                        self.emit(&format!("push {}", allocation));
-                        self.emit("call .Pdecref");
-                        self.emit("call .Pdrop");
+                    for (ptr, t) in &scope.allocations {
+                        self.emit(&format!("push {}", ptr));
+                        self.count_refs(t, &scope, Self::REF_DEC | Self::REF_DROP);
+                        self.emit("clean");
                     }
 
                     self.emit("push_l 0");
@@ -205,7 +271,7 @@ impl Compiler {
             }
             Statement::Expression(e) => {
                 let ret_type = self.calculate(e, scope)?;
-                if ALLOCATIONS.contains(&ret_type) {
+                if self.requires_alloc(&ret_type) {
                     self.emit("call .Pdrop");
                 }
                 self.emit("clean");
@@ -265,7 +331,7 @@ impl Compiler {
                         return err!("invalid return type");
                     }
 
-                    if ALLOCATIONS.contains(&ret) {
+                    if self.requires_alloc(&ret) {
                         if let Expression::Term(Symbol::Identifier(s)) = e {
                             no_drop = Some(scope.vars.get(s).unwrap().ptr);
                         }
@@ -279,15 +345,17 @@ impl Compiler {
                     self.emit("push_l 0");
                 }
 
-                for allocation in &scope.allocations {
-                    self.emit(&format!("push {}", allocation));
-                    self.emit("call .Pdecref");
-                    match no_drop {
-                        Some(p) => if p != *allocation {
-                            self.emit("call .Pdrop");
+                for (ptr, t) in &scope.allocations {
+                    self.emit(&format!("push {}", ptr));
+                    self.count_refs(t, scope, Self::REF_DEC | match no_drop {
+                        Some(p) => if p != *ptr {
+                            Self::REF_DROP
                         }
-                        None => self.emit("call .Pdrop"),
-                    }
+                        else {
+                            0
+                        }
+                        None => Self::REF_DROP,
+                    });
                     self.emit("clean");
                 }
 
@@ -306,12 +374,38 @@ impl Compiler {
         }
     }
 
-    fn lvalue(&self, expr: &Expression, scope: &Scope) -> Result<Var> {
-        if let Expression::Term(Symbol::Identifier(ident)) = expr {
-            scope.get_var(&ident)
-        }
-        else {
-            err!("expected assignable value")
+    fn lvalue(&mut self, expr: &Expression, scope: &mut Scope) -> Result<Var> {
+        match expr {
+            Expression::Term(Symbol::Identifier(ident)) => {
+                let var = scope.get_var(&ident)?;
+                self.emit(&format!("pull {}", var.ptr));
+                Ok(var)
+            },
+            Expression::Index(arr, idx) => {
+                let arr_type = self.calculate(arr, scope)?;
+                let idx_type = self.calculate(idx, scope)?;
+
+                if let Type::Array(inner) = arr_type {
+                    if idx_type != Type::Int {
+                        return err!("{:?} cannot index", idx_type);
+                    }
+
+                    self.emit("copy 8");
+                    self.emit("push_l 8");
+                    self.emit("i_mul");
+                    self.emit("push_l 24");
+                    self.emit("i_add");
+                    self.emit("i_add");
+                    self.emit("swap");
+                    self.emit("store");
+
+                    Ok(Var { ptr: 0, type_: *inner, assigned: true, named: false })
+                }
+                else {
+                    err!("{:?} cannot be indexed", arr_type)
+                }
+            }
+            _ => err!("expected an assignable value")
         }
     }
 
@@ -333,7 +427,7 @@ impl Compiler {
                 let ld = self.write(s);
                 self.emit(&format!("push_l .L{}", ld));
                 self.emit(&format!("push_l {}", s.len() + 16));
-                self.call(".Pmake_string", scope);
+                self.call(Some(".Pmake_string"), scope);
                 Ok(Type::String)
             }
             Expression::Term(Symbol::Array(items)) => {
@@ -354,7 +448,7 @@ impl Compiler {
                     }
                 }
                 self.emit(&format!("push_l {}", length));
-                self.call(".Pmake_array", scope);
+                self.call(Some(".Pmake_array"), scope);
 
                 Ok(if let Some(t) = arr_type {
                     Type::Array(Box::new(t))
@@ -365,23 +459,55 @@ impl Compiler {
             }
             Expression::Term(Symbol::Identifier(ident)) => {
                 let var = scope.get_var(&ident)?;
-                self.emit(&format!("push {}", var.ptr));
+                if var.named {
+                    self.emit(&format!("push_l {}", ".F".to_string() + ident));
+                }
+                else {
+                    self.emit(&format!("push {}", var.ptr));
+                }
                 Ok(var.type_)
             }
-            Expression::Term(Symbol::Call(name, params)) => {
+            Expression::Call(name, params) => {
                 let mut called_sig = Vec::new();
                 for param in params.iter().rev() {
                     called_sig.push(self.calculate(param, scope)?);
                 }
 
-                self.call(&(".F".to_string() + name), scope);
+                let signature = self.calculate(name, scope)?;
+                self.call(None, scope);
 
-                let signature = self.functions.get(name).ok_or("undefined function")?;
-                if called_sig.len() != signature.param_types.len() || called_sig.iter().rev().zip(signature.param_types.iter()).any(|s| s.0 != s.1) {
-                    return err!("incorrect signature on function call, expected {:?} got {:?}", signature.param_types, called_sig);
+                if let Type::Function(ret, params) = signature {
+                    if called_sig.len() != params.len() || called_sig.iter().rev().zip(params.iter()).any(|s| s.0 != s.1) {
+                        return err!("incorrect signature on function call, expected {:?} got {:?}", params, called_sig);
+                    }
+
+                    Ok(*ret)
                 }
-                let ret_type = signature.return_type.clone();
-                Ok(ret_type)
+                else {
+                    err!("{:?} cannot be called", signature)
+                }
+            }
+            Expression::Index(arr, idx) => {
+                let arr_type = self.calculate(arr, scope)?;
+                let idx_type = self.calculate(idx, scope)?;
+
+                if let Type::Array(inner) = arr_type {
+                    if idx_type != Type::Int {
+                        return err!("{:?} cannot index", idx_type);
+                    }
+
+                    self.emit("push_l 8");
+                    self.emit("i_mul");
+                    self.emit("push_l 24");
+                    self.emit("i_add");
+                    self.emit("i_add");
+                    self.emit("deref");
+
+                    Ok(*inner)
+                }
+                else {
+                    err!("{:?} cannot be indexed", arr_type)
+                }
             }
             Expression::BinaryOperation(op, lhs, rhs) => {
                 match op {
@@ -390,15 +516,14 @@ impl Compiler {
                         let var = self.lvalue(&**lhs, scope)?;
 
                         return if type_ret == var.type_ {
-                            self.emit(&format!("pull {}", var.ptr));
-                            if ALLOCATIONS.contains(&type_ret) {
+                            if self.requires_alloc(&type_ret) {
                                 if var.assigned {
-                                    self.emit(&format!("push")); // TODO:
+                                    self.emit(&format!("push"));
                                     self.emit("call .Pdecref");
                                     self.emit("call .Pdrop");
                                 }
-                                scope.allocations.push(var.ptr);
-                                self.emit("call .Pincref");
+                                scope.allocations.push((var.ptr, var.type_));
+                                self.count_refs(&type_ret, scope, Self::REF_INC);
                             }
                             Ok(type_ret)
                         }
@@ -529,14 +654,21 @@ impl Compiler {
         self.program.push('\n');
     }
 
-    fn call(&mut self, name: &str, scope: &Scope) {
+    fn call(&mut self, name: Option<&str>, scope: &Scope) {
+        let call_instruction = if let Some(s) = name {
+            format!("call {}", s)
+        }
+        else {
+            "call_s".to_string()
+        };
+
         if scope.ptr != 0 {
             self.emit(&format!("offset {}", scope.ptr));
-            self.emit(&format!("call {}", name));
+            self.emit(&call_instruction);
             self.emit(&format!("unoffset {}", scope.ptr));
         }
         else {
-            self.emit(&format!("call {}", name));
+            self.emit(&call_instruction);
         }
     }
 

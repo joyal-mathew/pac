@@ -66,6 +66,13 @@ void call() {
     cp += 8;
 }
 
+void call_s() {
+    sp -= 8;
+    AS(size_t, call_stack + cp) = pc;
+    pc = AS(size_t, op_stack + sp);
+    cp += 8;
+}
+
 void sys() {
     syscalls[AS(unsigned char, program + pc)]();
     pc += 1;
@@ -266,7 +273,7 @@ void b_xor() {
 void (*instructions[])() = {
     nop,
     push, push_l, pop, pull, clean, clear, copy, swap,
-    unoffset, offset, call, sys, ret,
+    unoffset, offset, call, call_s, sys, ret,
     jmp, br,
     addr, deref, store,
     fti, itf,
@@ -280,7 +287,7 @@ void (*instructions[])() = {
 char *names[] = {
     "nop",
     "push", "push_l", "pop", "pull", "clean", "clear", "copy", "swap",
-    "unoffset", "offset", "call", "sys", "ret",
+    "unoffset", "offset", "call", "call_s", "sys", "ret",
     "jmp", "br",
     "addr", "deref", "store",
     "fti", "itf",
