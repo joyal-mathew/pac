@@ -1,7 +1,7 @@
 use crate::{ lexing::Type, utils::{ Result, Serial }, parsing::* };
 use std::{ mem, fs, collections::HashMap };
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Var {
     ptr: usize,
     type_: Type,
@@ -32,7 +32,6 @@ fn is_main(sig: &Type) -> bool {
 struct Scope {
     vars: HashMap<String, Var>,
     ptr: usize,
-    allocations: Vec<(usize, Type)>,
 }
 
 impl Scope {
@@ -40,20 +39,23 @@ impl Scope {
         Self {
             vars: global.clone(),
             ptr: 0,
-            allocations: Vec::new(),
         }
     }
 
-    fn get_var(&self, name: &String) -> Result<Var> {
+    fn get_var(&mut self, name: &String, assign: bool) -> Result<Var> {
+        println!("{} {:?}", assign, self.vars.get(name));
+        if assign {
+            self.vars.entry(name.to_string()).and_modify(|v| v.assigned = true).or_insert(Var {  type_: Type::Void, ptr: 0, assigned: false, named: false  });
+        }
         self.vars.get(name).cloned().ok_or(format!("undefined variable {}", name))
     }
 
-    fn delcare(&mut self, ident: String, type_: Type) -> Result<usize> {
+    fn declare(&mut self, ident: String, type_: Type, assigned: bool) -> Result<usize> {
         if self.vars.contains_key(&ident) {
             err!("variable already delcared in this scope")
         }
         else {
-            self.vars.insert(ident, Var { type_, ptr: self.ptr, assigned: false, named: false });
+            self.vars.insert(ident, Var { type_, ptr: self.ptr, assigned, named: false });
             self.ptr += 8;
             Ok(self.ptr - 8)
         }
@@ -75,10 +77,6 @@ pub struct Compiler {
 }
 
 impl Compiler {
-    const REF_INC: usize = 1;
-    const REF_DEC: usize = 2;
-    const REF_DROP: usize = 4;
-
     pub fn new(parser: Parser) -> Self {
         let mut functions = HashMap::new();
 
@@ -86,10 +84,6 @@ impl Compiler {
         functions.insert("print_string".to_string(), Var { ptr: 0, type_: Type::Function(Box::new(Type::Void), vec![Type::String]), assigned: true, named: true });
         functions.insert("println_str".to_string(), Var { ptr: 0, type_: Type::Function(Box::new(Type::Void), vec![Type::Str]), assigned: true, named: true });
         functions.insert("println_string".to_string(), Var { ptr: 0, type_: Type::Function(Box::new(Type::Void), vec![Type::String]), assigned: true, named: true });
-
-        functions.insert("get_char".to_string(), Var { ptr: 0, type_: Type::Function(Box::new(Type::Str), vec![Type::String, Type::Int]), assigned: true, named: true });
-        functions.insert("set_char".to_string(), Var { ptr: 0, type_: Type::Function(Box::new(Type::Void), vec![Type::String, Type::Int, Type::Str]), assigned: true, named: true });
-        functions.insert("str_len".to_string(), Var { ptr: 0, type_: Type::Function(Box::new(Type::Int), vec![Type::String]), assigned: true, named: true });
 
         Self {
             parser,
@@ -103,15 +97,11 @@ impl Compiler {
         }
     }
 
-    fn requires_alloc(&self, t: &Type) -> bool {
-        self.would_alloc.iter().any(|a| mem::discriminant(a) == mem::discriminant(t))
-    }
-
     pub fn compile(&mut self) -> Result<&String> {
         let declarations = self.parser.parse()?;
 
-        self.emit("call .Fmain");
-        self.emit("sys @brk");
+        emit!(self, "call .Fmain");
+        emit!(self, "sys @brk");
 
         for declaration in &declarations {
             match declaration {
@@ -151,82 +141,16 @@ impl Compiler {
         Ok(&self.program)
     }
 
-    fn count_refs(&mut self, t: &Type, scope: &Scope, op: usize) {
-        if op & Self::REF_INC != 0 {
-            self.emit("call .Pincref")
-        }
-        if op & Self::REF_DEC != 0 {
-            self.emit("call .Pdecref")
-        }
-        if op & Self::REF_DROP != 0 {
-            self.emit("call .Pdrop")
-        }
-
-        if let Type::Array(inner) = t {
-            if self.requires_alloc(inner) {
-                let l1 = self.get_label();
-                let l2 = self.get_label();
-
-                if scope.ptr != 0 {
-                    self.emit(&format!("offset {}", scope.ptr));
-                }
-                self.emit("copy"); // TODO: move to .paa file
-                self.emit("push_l 8");
-                self.emit("i_add");
-                self.emit("deref");
-                self.emit("push_l 24");
-                self.emit("swap");
-                self.emit("i_sub");
-                self.emit("push_l 8");
-                self.emit("swap");
-                self.emit("i_div");
-                self.emit("pop 8");
-                self.emit("push_l 0");
-                self.emit("pop 0");
-                self.emit("copy");
-                self.emit("push_l 24");
-                self.emit("i_add");
-                self.emit("pop 16");
-                self.emit(&format!("#L{}", l1));
-                self.emit("push 0");
-                self.emit("push 8");
-                self.emit("i_lte");
-                self.emit(&format!("br .L{}", l2));
-                self.emit("push 0");
-                self.emit("push_l 8");
-                self.emit("i_mul");
-                self.emit("push 16");
-                self.emit("i_add");
-                self.emit("deref");
-                self.count_refs(inner, scope, op);
-                self.emit("clean");
-                self.emit("push 0");
-                self.emit("push_l 1");
-                self.emit("i_add");
-                self.emit("pop 0");
-                self.emit(&format!("jmp .L{}", l1));
-                self.emit(&format!("#L{}", l2));
-                if scope.ptr != 0 {
-                    self.emit(&format!("unoffset {}", scope.ptr));
-                }
-            }
-        }
-    }
-
     fn function(&mut self, func: &TopLevelDeclaration) -> Result<()> {
         if let TopLevelDeclaration::Function(name, return_type, params, block) = func {
-            self.emit(&format!("\n#F{}", name));
+            emit!(self, "\n#F{}", name);
             let mut scope = Scope::new(&self.functions);
 
             for param in params {
                 if let Statement::Declaration(t, idents) = param {
                     for ident in idents {
-                        let ptr = scope.delcare(ident.to_string(), t.clone())?;
-                        if self.requires_alloc(t) {
-                            scope.allocations.push((ptr, t.clone()));
-                            self.count_refs(t, &scope, Self::REF_INC);
-                        }
-                        self.emit(&format!("pop {}", ptr));
+                        let ptr = scope.declare(ident.to_string(), t.clone(), true)?;
+                        emit!(self, "pop {}", ptr);
                     }
                 }
             }
@@ -235,14 +159,8 @@ impl Compiler {
 
             if let Type::Void = return_type {
                 if !returns {
-                    for (ptr, t) in &scope.allocations {
-                        self.emit(&format!("push {}", ptr));
-                        self.count_refs(t, &scope, Self::REF_DEC | Self::REF_DROP);
-                        self.emit("clean");
-                    }
-
-                    self.emit("push_l 0");
-                    self.emit("ret");
+                    emit!(self, "push_l 0");
+                    emit!(self, "ret");
                 }
 
                 Ok(())
@@ -265,16 +183,13 @@ impl Compiler {
         match statement {
             Statement::Declaration(t, idents) => {
                 for ident in idents {
-                    scope.delcare(ident.clone(), t.clone())?;
+                    scope.declare(ident.clone(), t.clone(), false)?;
                 }
                 Ok(false)
             }
             Statement::Expression(e) => {
-                let ret_type = self.calculate(e, scope)?;
-                if self.requires_alloc(&ret_type) {
-                    self.emit("call .Pdrop");
-                }
-                self.emit("clean");
+                self.calculate(e, scope)?;
+                emit!(self, "clean");
                 Ok(false)
             }
             Statement::Block(statements) => {
@@ -293,12 +208,12 @@ impl Compiler {
                     return err!("expected int in condition");
                 }
 
-                self.emit(&format!("br .L{}", l1));
+                emit!(self, "br .L{}", l1);
                 let r1 = self.evaluate(&*on_else, scope, ret.clone())?;
-                self.emit(&format!("jmp .L{}", l2));
-                self.emit(&format!("#L{}", l1));
+                emit!(self, "jmp .L{}", l2);
+                emit!(self, "#L{}", l1);
                 let r2 = self.evaluate(&*on_if, scope, ret.clone())?;
-                self.emit(&format!("#L{}", l2));
+                emit!(self, "#L{}", l2);
 
                 Ok(r1 & r2)
             }
@@ -307,34 +222,27 @@ impl Compiler {
                 let l2 = self.get_label();
                 let l3 = self.get_label();
 
-                self.emit(&format!("jmp .L{}", l2));
-                self.emit(&format!("#L{}", l1));
+                emit!(self, "jmp .L{}", l2);
+                emit!(self, "#L{}", l1);
                 self.break_label.push(l3);
                 self.continue_label.push(l2);
                 self.evaluate(&*block, scope, ret)?;
                 self.break_label.pop();
                 self.continue_label.pop();
-                self.emit(&format!("#L{}", l2));
+                emit!(self, "#L{}", l2);
                 let ret_type = self.calculate(condition, scope)?;
                 if ret_type != Type::Int {
                     return err!("expected int in condition");
                 }
-                self.emit(&format!("br .L{}", l1));
-                self.emit(&format!("#L{}", l3));
+                emit!(self, "br .L{}", l1);
+                emit!(self, "#L{}", l3);
 
                 Ok(false)
             }
             Statement::Return(expr) => {
-                let mut no_drop = None;
                 if let Some(e) = expr {
                     if self.calculate(e, scope)? != ret {
                         return err!("invalid return type");
-                    }
-
-                    if self.requires_alloc(&ret) {
-                        if let Expression::Term(Symbol::Identifier(s)) = e {
-                            no_drop = Some(scope.vars.get(s).unwrap().ptr);
-                        }
                     }
                 }
                 else {
@@ -342,99 +250,50 @@ impl Compiler {
                         return err!("expected return value");
                     }
 
-                    self.emit("push_l 0");
+                    emit!(self, "push_l 0");
                 }
 
-                for (ptr, t) in &scope.allocations {
-                    self.emit(&format!("push {}", ptr));
-                    self.count_refs(t, scope, Self::REF_DEC | match no_drop {
-                        Some(p) => if p != *ptr {
-                            Self::REF_DROP
-                        }
-                        else {
-                            0
-                        }
-                        None => Self::REF_DROP,
-                    });
-                    self.emit("clean");
-                }
-
-                self.emit("ret");
+                emit!(self, "ret");
 
                 Ok(true)
             }
             Statement::Break(depth) => {
-                self.emit(&format!("jmp .L{}", self.break_label[self.break_label.len() - 1 - depth]));
+                emit!(self, "jmp .L{}", self.break_label[self.break_label.len() - 1 - depth]);
                 Ok(false)
             }
             Statement::Continue(depth) => {
-                self.emit(&format!("jmp .L{}", self.continue_label[self.continue_label.len() - 1 - depth]));
+                emit!(self, "jmp .L{}", self.continue_label[self.continue_label.len() - 1 - depth]);
                 Ok(false)
             }
-        }
-    }
-
-    fn lvalue(&mut self, expr: &Expression, scope: &mut Scope) -> Result<Var> {
-        match expr {
-            Expression::Term(Symbol::Identifier(ident)) => {
-                let var = scope.get_var(&ident)?;
-                self.emit(&format!("pull {}", var.ptr));
-                Ok(var)
-            },
-            Expression::Index(arr, idx) => {
-                let arr_type = self.calculate(arr, scope)?;
-                let idx_type = self.calculate(idx, scope)?;
-
-                if let Type::Array(inner) = arr_type {
-                    if idx_type != Type::Int {
-                        return err!("{:?} cannot index", idx_type);
-                    }
-
-                    self.emit("copy 8");
-                    self.emit("push_l 8");
-                    self.emit("i_mul");
-                    self.emit("push_l 24");
-                    self.emit("i_add");
-                    self.emit("i_add");
-                    self.emit("swap");
-                    self.emit("store");
-
-                    Ok(Var { ptr: 0, type_: *inner, assigned: true, named: false })
-                }
-                else {
-                    err!("{:?} cannot be indexed", arr_type)
-                }
-            }
-            _ => err!("expected an assignable value")
         }
     }
 
     fn calculate(&mut self, expr: &Expression, scope: &mut Scope) -> Result<Type> {
         match expr {
             Expression::Term(Symbol::Float(f)) => {
-                self.emit(&format!("push_l {}", u64::deserialize(f.serialize())));
+                emit!(self, "push_l {}", u64::deserialize(f.serialize()));
                 Ok(Type::Float)
             }
             Expression::Term(Symbol::Int(i)) => {
-                self.emit(&format!("push_l {}", i));
+                emit!(self, "push_l {}", i);
                 Ok(Type::Int)
             }
             Expression::Term(Symbol::Str(s)) => {
-                self.emit(&format!("push_l '{}", s));
+                emit!(self, "push_l '{}", s);
                 Ok(Type::Str)
             }
             Expression::Term(Symbol::String(s)) => {
                 let ld = self.write(s);
-                self.emit(&format!("push_l .L{}", ld));
-                self.emit(&format!("push_l {}", s.len() + 16));
+                emit!(self, "push_l .L{}", ld);
+                emit!(self, "push_l {}", s.len() + 16);
                 self.call(Some(".Pmake_string"), scope);
                 Ok(Type::String)
             }
             Expression::Term(Symbol::Array(items)) => {
                 let length = items.len() * 8 + 24;
-                self.emit("push_l 0");
-                self.emit(&format!("push_l {}", length));
-                self.emit(&format!("push_l {}", length));
+                emit!(self, "push_l 0");
+                emit!(self, "push_l {}", length);
+                emit!(self, "push_l {}", length);
                 let mut arr_type: Option<Type> = None;
                 for item in items {
                     let item_type = self.calculate(&item, scope)?;
@@ -447,7 +306,7 @@ impl Compiler {
                         arr_type = Some(item_type.clone());
                     }
                 }
-                self.emit(&format!("push_l {}", length));
+                emit!(self, "push_l {}", length);
                 self.call(Some(".Pmake_array"), scope);
 
                 Ok(if let Some(t) = arr_type {
@@ -458,12 +317,15 @@ impl Compiler {
                 })
             }
             Expression::Term(Symbol::Identifier(ident)) => {
-                let var = scope.get_var(&ident)?;
+                let var = scope.get_var(&ident, false)?;
+                if !var.assigned {
+                    return err!("attempt to use unassined variable");
+                }
                 if var.named {
-                    self.emit(&format!("push_l {}", ".F".to_string() + ident));
+                    emit!(self, "push_l {}", ".F".to_string() + ident);
                 }
                 else {
-                    self.emit(&format!("push {}", var.ptr));
+                    emit!(self, "push {}", var.ptr);
                 }
                 Ok(var.type_)
             }
@@ -496,12 +358,12 @@ impl Compiler {
                         return err!("{:?} cannot index", idx_type);
                     }
 
-                    self.emit("push_l 8");
-                    self.emit("i_mul");
-                    self.emit("push_l 24");
-                    self.emit("i_add");
-                    self.emit("i_add");
-                    self.emit("deref");
+                    emit!(self, "push_l 8");
+                    emit!(self, "i_mul");
+                    emit!(self, "push_l 24");
+                    emit!(self, "i_add");
+                    emit!(self, "i_add");
+                    emit!(self, "deref");
 
                     Ok(*inner)
                 }
@@ -512,26 +374,58 @@ impl Compiler {
             Expression::BinaryOperation(op, lhs, rhs) => {
                 match op {
                     Operation::Assign => {
-                        let type_ret = self.calculate(&*rhs, scope)?;
-                        let var = self.lvalue(&**lhs, scope)?;
+                        return match &**lhs {
+                            Expression::Term(Symbol::Identifier(s)) => {
+                                let var = scope.get_var(&s, true)?;
+                                let type_ret = self.calculate(rhs, scope)?;
+                                emit!(self, "pull {}", var.ptr);
 
-                        return if type_ret == var.type_ {
-                            if self.requires_alloc(&type_ret) {
-                                if var.assigned {
-                                    self.emit(&format!("push"));
-                                    self.emit("call .Pdecref");
-                                    self.emit("call .Pdrop");
+                                if type_ret == var.type_ {
+                                    Ok(type_ret)
                                 }
-                                scope.allocations.push((var.ptr, var.type_));
-                                self.count_refs(&type_ret, scope, Self::REF_INC);
+                                else if mem::discriminant(&var.type_) == mem::discriminant(&Type::Array(Box::new(Type::Void))) {
+                                    Self::infer(var.type_, type_ret)
+                                }
+                                else {
+                                    err!("mismatched types on assignment: {:?} and {:?}", &var.type_, &type_ret)
+                                }
                             }
-                            Ok(type_ret)
-                        }
-                        else if mem::discriminant(&var.type_) == mem::discriminant(&Type::Array(Box::new(Type::Void))) {
-                            Self::infer(var.type_, type_ret)
-                        }
-                        else {
-                            err!("mismatched types on assignment: {:?} and {:?}", &var.type_, &type_ret)
+                            Expression::Index(arr, idx) => {
+                                let arr_type = self.calculate(arr, scope)?;
+                                let idx_type = self.calculate(idx, scope)?;
+
+                                if idx_type != Type::Int {
+                                    return err!("{:?} cannot index", idx_type);
+                                }
+
+                                match arr_type {
+                                    Type::Array(inner) => {
+                                        emit!(self, "offset {}", scope.ptr);
+                                        emit!(self, "push_l 8");
+                                        emit!(self, "i_mul");
+                                        emit!(self, "push_l 24");
+                                        emit!(self, "i_add");
+                                        emit!(self, "i_add");
+                                        let type_ret = self.calculate(rhs, scope)?;
+                                        emit!(self, "pull 0");
+                                        emit!(self, "store");
+                                        emit!(self, "push 0");
+                                        emit!(self, "unoffset {}", scope.ptr);
+
+                                        if type_ret == *inner {
+                                            Ok(type_ret)
+                                        }
+                                        else if mem::discriminant(&*inner) == mem::discriminant(&Type::Array(Box::new(Type::Void))) {
+                                            Self::infer(*inner, type_ret)
+                                        }
+                                        else {
+                                            err!("mismatched types on assignment: {:?} and {:?}", &*inner, &type_ret)
+                                        }
+                                    }
+                                    _ => err!("{:?} cannot be indexed", arr_type),
+                                }
+                            }
+                            _ => err!("expected assignable value")
                         }
                     }
                     Operation::Cast => {
@@ -553,15 +447,15 @@ impl Compiler {
                             return err!("expected int in condition");
                         }
 
-                        self.emit(&format!("br .L{}", l1));
-                        self.emit("push_l 0");
-                        self.emit(&format!("jmp .L{}", l2));
-                        self.emit(&format!("#L{}", l1));
+                        emit!(self, "br .L{}", l1);
+                        emit!(self, "push_l 0");
+                        emit!(self, "jmp .L{}", l2);
+                        emit!(self, "#L{}", l1);
                         let type_r = self.calculate(&*rhs, scope)?;
                         if type_r != Type::Int {
                             return err!("expected int in condition");
                         }
-                        self.emit(&format!("#L{}", l2));
+                        emit!(self, "#L{}", l2);
 
                         return Ok(Type::Int);
                     }
@@ -573,14 +467,14 @@ impl Compiler {
                             return err!("expected int in condition");
                         }
 
-                        self.emit("copy");
-                        self.emit(&format!("br .L{}", l1));
-                        self.emit("clean");
+                        emit!(self, "copy");
+                        emit!(self, "br .L{}", l1);
+                        emit!(self, "clean");
                         let type_r = self.calculate(&*rhs, scope)?;
                         if type_r != Type::Int {
                             return err!("expected int in condition");
                         }
-                        self.emit(&format!("#L{}", l1));
+                        emit!(self, "#L{}", l1);
 
                         return Ok(Type::Int);
                     }
@@ -592,36 +486,36 @@ impl Compiler {
 
                 match (type_r.clone(), type_l.clone()) {
                     (Type::Int, Type::Int) => match op {
-                        Operation::Add => { self.emit("i_add"); Ok(Type::Int) }
-                        Operation::Subtract => { self.emit("i_sub"); Ok(Type::Int) }
-                        Operation::Multiply => { self.emit("i_mul"); Ok(Type::Int) }
-                        Operation::Divide => { self.emit("i_div"); Ok(Type::Int) }
-                        Operation::Remainder => { self.emit("i_rem"); Ok(Type::Int) }
-                        Operation::Equal => { self.emit("i_eq"); Ok(Type::Int) }
-                        Operation::Inequal => { self.emit("i_neq"); Ok(Type::Int) }
-                        Operation::Less => { self.emit("i_lt"); Ok(Type::Int) }
-                        Operation::Greater => { self.emit("i_gt"); Ok(Type::Int) }
-                        Operation::LessOrEqual => { self.emit("i_lte"); Ok(Type::Int) }
-                        Operation::GreaterOrEqual => { self.emit("i_gte"); Ok(Type::Int) }
-                        Operation::LeftShift => { self.emit("shl"); Ok(Type::Int) }
-                        Operation::RightShift => { self.emit("shr"); Ok(Type::Int) }
-                        Operation::BitwiseAnd => { self.emit("b_and"); Ok(Type::Int) }
-                        Operation::BitwiseOr => { self.emit("b_or"); Ok(Type::Int) }
-                        Operation::BitwiseXor => { self.emit("b_xor"); Ok(Type::Int) }
+                        Operation::Add => { emit!(self, "i_add"); Ok(Type::Int) }
+                        Operation::Subtract => { emit!(self, "i_sub"); Ok(Type::Int) }
+                        Operation::Multiply => { emit!(self, "i_mul"); Ok(Type::Int) }
+                        Operation::Divide => { emit!(self, "i_div"); Ok(Type::Int) }
+                        Operation::Remainder => { emit!(self, "i_rem"); Ok(Type::Int) }
+                        Operation::Equal => { emit!(self, "i_eq"); Ok(Type::Int) }
+                        Operation::Inequal => { emit!(self, "i_neq"); Ok(Type::Int) }
+                        Operation::Less => { emit!(self, "i_lt"); Ok(Type::Int) }
+                        Operation::Greater => { emit!(self, "i_gt"); Ok(Type::Int) }
+                        Operation::LessOrEqual => { emit!(self, "i_lte"); Ok(Type::Int) }
+                        Operation::GreaterOrEqual => { emit!(self, "i_gte"); Ok(Type::Int) }
+                        Operation::LeftShift => { emit!(self, "shl"); Ok(Type::Int) }
+                        Operation::RightShift => { emit!(self, "shr"); Ok(Type::Int) }
+                        Operation::BitwiseAnd => { emit!(self, "b_and"); Ok(Type::Int) }
+                        Operation::BitwiseOr => { emit!(self, "b_or"); Ok(Type::Int) }
+                        Operation::BitwiseXor => { emit!(self, "b_xor"); Ok(Type::Int) }
                         _ => err!("the operation ({:?}) is not defined for these types: {:?} and {:?}", op, type_r, type_l),
                     }
                     (Type::Float, Type::Float) => match op {
-                        Operation::Add => { self.emit("f_add"); Ok(Type::Float) }
-                        Operation::Subtract => { self.emit("f_sub"); Ok(Type::Float) }
-                        Operation::Multiply => { self.emit("f_mul"); Ok(Type::Float) }
-                        Operation::Divide => { self.emit("f_div"); Ok(Type::Float) }
-                        Operation::Remainder => { self.emit("f_rem"); Ok(Type::Float) }
-                        Operation::Equal => { self.emit("f_eq"); Ok(Type::Float) }
-                        Operation::Inequal => { self.emit("f_neq"); Ok(Type::Float) }
-                        Operation::Less => { self.emit("f_lt"); Ok(Type::Float) }
-                        Operation::Greater => { self.emit("f_gt"); Ok(Type::Float) }
-                        Operation::LessOrEqual => { self.emit("f_lte"); Ok(Type::Float) }
-                        Operation::GreaterOrEqual => { self.emit("f_gte"); Ok(Type::Float) }
+                        Operation::Add => { emit!(self, "f_add"); Ok(Type::Float) }
+                        Operation::Subtract => { emit!(self, "f_sub"); Ok(Type::Float) }
+                        Operation::Multiply => { emit!(self, "f_mul"); Ok(Type::Float) }
+                        Operation::Divide => { emit!(self, "f_div"); Ok(Type::Float) }
+                        Operation::Remainder => { emit!(self, "f_rem"); Ok(Type::Float) }
+                        Operation::Equal => { emit!(self, "f_eq"); Ok(Type::Float) }
+                        Operation::Inequal => { emit!(self, "f_neq"); Ok(Type::Float) }
+                        Operation::Less => { emit!(self, "f_lt"); Ok(Type::Float) }
+                        Operation::Greater => { emit!(self, "f_gt"); Ok(Type::Float) }
+                        Operation::LessOrEqual => { emit!(self, "f_lte"); Ok(Type::Float) }
+                        Operation::GreaterOrEqual => { emit!(self, "f_gte"); Ok(Type::Float) }
                         _ => err!("the operation is not defined for these types"),
                     }
                     _ => err!("the operation ({:?}) is not defined for these types: {:?} and {:?}", op, type_r, type_l),
@@ -630,16 +524,38 @@ impl Compiler {
             Expression::UnaryOperation(op, arg) => {
                 let type_ret = self.calculate(&*arg, scope)?;
 
+                if let Type::Array(_) = type_ret {
+                    emit!(self, "push_l 8");
+                    emit!(self, "i_add");
+                    emit!(self, "deref");
+                    emit!(self, "push_l 24");
+                    emit!(self, "swap");
+                    emit!(self, "i_sub");
+                    emit!(self, "push_l 8");
+                    emit!(self, "swap");
+                    emit!(self, "i_div");
+                    return Ok(Type::Int);
+                }
+
                 match type_ret {
                     Type::Int => match op {
-                        Operation::Negate => { self.emit("i_neg"); Ok(Type::Int) },
-                        Operation::LogicalNot => { self.emit("i_not"); Ok(Type::Int) },
-                        Operation::BitwiseNot => { self.emit("b_not"); Ok(Type::Int) },
+                        Operation::Negate => { emit!(self, "i_neg"); Ok(Type::Int) },
+                        Operation::LogicalNot => { emit!(self, "i_not"); Ok(Type::Int) },
+                        Operation::BitwiseNot => { emit!(self, "b_not"); Ok(Type::Int) },
                         _ => err!("operation is not defined for this type"),
                     }
                     Type::Float => match op {
-                        Operation::Negate => { self.emit("f_neg"); Ok(Type::Float) },
-                        Operation::LogicalNot => { self.emit("f_not"); Ok(Type::Float) },
+                        Operation::Negate => { emit!(self, "f_neg"); Ok(Type::Float) },
+                        Operation::LogicalNot => { emit!(self, "f_not"); Ok(Type::Float) },
+                        _ => err!("operation is not defined for this type"),
+                    }
+                    Type::String => match op {
+                        Operation::Length => {
+                            emit!(self, "push_l 8");
+                            emit!(self, "i_add");
+                            emit!(self, "deref");
+                            Ok(Type::Int)
+                        }
                         _ => err!("operation is not defined for this type"),
                     }
                     _ => err!("operation is not defined for this type"),
@@ -663,12 +579,12 @@ impl Compiler {
         };
 
         if scope.ptr != 0 {
-            self.emit(&format!("offset {}", scope.ptr));
-            self.emit(&call_instruction);
-            self.emit(&format!("unoffset {}", scope.ptr));
+            emit!(self, "offset {}", scope.ptr);
+            emit!(self, "{}", call_instruction);
+            emit!(self, "unoffset {}", scope.ptr);
         }
         else {
-            self.emit(&call_instruction);
+            emit!(self, "{}", call_instruction);
         }
     }
 
@@ -702,8 +618,8 @@ impl Compiler {
             match (type_from, type_to) {
                 (Type::Int, Type::Str) => (),
                 (Type::Str, Type::Int) => (),
-                (Type::Int, Type::Float) => self.emit("itf"),
-                (Type::Float, Type::Int) => self.emit("fti"),
+                (Type::Int, Type::Float) => emit!(self, "itf"),
+                (Type::Float, Type::Int) => emit!(self, "fti"),
                 _ => return err!("this cast cannnot be done")
             }
         }

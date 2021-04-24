@@ -58,6 +58,10 @@ pub enum Operator {
 
     Semicolon,
     Comma,
+
+    Length,
+    Pop,
+    Push,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -99,7 +103,7 @@ pub struct Lexer {
 }
 
 impl Lexer {
-    const OPERATORS: &'static str = ",^~+-*/%()=!;<>&|[]{}";
+    const OPERATORS: &'static str = "$@,^~+-*/%()=!;<>&|[]{}";
 
     pub fn new(source: String) -> Self {
         let mut operators = HashMap::new();
@@ -137,6 +141,9 @@ impl Lexer {
         operators.insert("}", Operator::CloseBrace);
         operators.insert(";", Operator::Semicolon);
         operators.insert(",", Operator::Comma);
+        operators.insert("$", Operator::Length);
+        operators.insert("@", Operator::Pop);
+        operators.insert("<-", Operator::Push);
 
         keywords.insert("var", Keyword::Var);
         keywords.insert("if", Keyword::If);

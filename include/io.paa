@@ -14,8 +14,6 @@ i_add
 swap
 deref
 sys @print
-nop
-call .Pdrop
 ret
 
 #Fprintln_str

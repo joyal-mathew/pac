@@ -35,6 +35,10 @@ macro_rules! expect {
     };
 }
 
+macro_rules! emit {
+    ($self: ident, $($arg: tt)*) => ($self.emit(&format!($($arg)*)));
+}
+
 pub type Result<T> = result::Result<T, String>;
 
 pub trait Serial {

@@ -27,6 +27,9 @@ pub enum Operation {
     BitwiseOr,
     Assign,
     Cast,
+    Length,
+    Pop,
+    Push,
 }
 
 #[derive(Debug)]
@@ -145,7 +148,7 @@ impl Parser {
                     Token::Keyword(Keyword::Return) => self.return_statement()?,
                     Token::Keyword(Keyword::Break) => Statement::Break(self.depth()?),
                     Token::Keyword(Keyword::Continue) => Statement::Continue(self.depth()?),
-                    _ => Statement::Expression(self.assignment()?),
+                    _ => Statement::Expression(self.expression()?),
                 };
 
                 expect!(self, Token::Operator(Operator::Semicolon));
@@ -171,13 +174,13 @@ impl Parser {
             Ok(Statement::Return(None))
         }
         else {
-            Ok(Statement::Return(Some(self.assignment()?)))
+            Ok(Statement::Return(Some(self.expression()?)))
         }
     }
 
     fn if_else(&mut self) -> Result<Statement> {
         self.advance()?;
-        let condition = self.assignment()?;
+        let condition = self.expression()?;
         expect!(self, Token::Keyword(Keyword::Then));
 
         let on_if = self.block(&[Token::Keyword(Keyword::Else), Token::Keyword(Keyword::End), Token::Keyword(Keyword::Elif)])?;
@@ -200,7 +203,7 @@ impl Parser {
 
     fn while_loop(&mut self) -> Result<Statement> {
         self.advance()?;
-        let condition = self.assignment()?;
+        let condition = self.expression()?;
         expect!(self, Token::Keyword(Keyword::Do));
         let block = self.block(&[Token::Keyword(Keyword::End)])?;
         self.advance()?;
@@ -225,9 +228,17 @@ impl Parser {
         }
     }
 
+    fn expression(&mut self) -> Result<Expression> {
+        self.assignment()
+    }
+
     parse_rule!(
-        name = assignment, parent = logical_or,
+        name = assignment, parent = push,
         Operator::Assignment => Operation::Assign
+    );
+    parse_rule!(
+        name = push, parent = logical_or,
+        Operator::Push => Operation::Push
     );
     parse_rule!(
         name = logical_or, parent = logical_and,
@@ -305,7 +316,7 @@ impl Parser {
                     let mut params = Vec::new();
 
                     if self.current != Token::Operator(Operator::CloseParenthesis) {
-                        params.push(self.assignment()?);
+                        params.push(self.expression()?);
                     }
 
                     loop {
@@ -314,7 +325,7 @@ impl Parser {
                         }
 
                         expect!(self, Token::Operator(Operator::Comma));
-                        params.push(self.assignment()?);
+                        params.push(self.expression()?);
                     }
 
                     expect!(self, Token::Operator(Operator::CloseParenthesis));
@@ -361,8 +372,10 @@ impl Parser {
             Token::Operator(Operator::Subtraction) => Ok(Expression::UnaryOperation(Operation::Negate, Box::new(self.term()?))),
             Token::Operator(Operator::LogicalNot) => Ok(Expression::UnaryOperation(Operation::LogicalNot, Box::new(self.term()?))),
             Token::Operator(Operator::BitwiseNot) => Ok(Expression::UnaryOperation(Operation::BitwiseNot, Box::new(self.term()?))),
+            Token::Operator(Operator::Length) => Ok(Expression::UnaryOperation(Operation::Length, Box::new(self.term()?))),
+            Token::Operator(Operator::Push) => Ok(Expression::UnaryOperation(Operation::Pop, Box::new(self.term()?))),
             Token::Operator(Operator::OpenParenthesis) => {
-                let expr = self.assignment()?;
+                let expr = self.expression()?;
                 expect!(self, Token::Operator(Operator::CloseParenthesis));
                 Ok(expr)
             }
@@ -370,7 +383,7 @@ impl Parser {
                 let mut items = Vec::new();
 
                 if self.current != Token::Operator(Operator::CloseBrace) {
-                    items.push(self.assignment()?);
+                    items.push(self.expression()?);
                 }
 
                 loop {
@@ -379,7 +392,7 @@ impl Parser {
                     }
 
                     expect!(self, Token::Operator(Operator::Comma));
-                    items.push(self.assignment()?);
+                    items.push(self.expression()?);
                 }
 
                 expect!(self, Token::Operator(Operator::CloseBrace));

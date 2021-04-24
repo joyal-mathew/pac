@@ -22,13 +22,7 @@ use std::{ fs, io::prelude::Write };
  * */
 
 fn main() {
-    let mut source = fs::read_to_string("main.pas").unwrap();
-
-    for file in fs::read_dir("lib").unwrap() {
-        source.push('\n');
-        source.push_str(&fs::read_to_string(file.unwrap().path()).unwrap());
-        source.push('\n');
-    }
+    let source = fs::read_to_string("main.pas").unwrap();
 
     match assembling::Assembler::new(compiling::Compiler::new(parsing::Parser::new(lexing::Lexer::new(source)))).assemble() {
         Ok(b) => {
