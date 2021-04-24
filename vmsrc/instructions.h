@@ -44,6 +44,13 @@ void copy() {
     sp += 8;
 }
 
+void clone() {
+    size_t len = AS(size_t, program + pc);
+    memcpy(op_stack + sp, op_stack + sp - len, len);
+    sp += len;
+    pc += 8;
+}
+
 void swap() {
     long long temp = AS(long long, op_stack + sp - 16);
     AS(long long, op_stack + sp - 16) = AS(long long, op_stack + sp - 8);
@@ -272,7 +279,7 @@ void b_xor() {
 
 void (*instructions[])() = {
     nop,
-    push, push_l, pop, pull, clean, clear, copy, swap,
+    push, push_l, pop, pull, clean, clear, copy, clone, swap,
     unoffset, offset, call, call_s, sys, ret,
     jmp, br,
     addr, deref, store,
@@ -286,7 +293,7 @@ void (*instructions[])() = {
 
 char *names[] = {
     "nop",
-    "push", "push_l", "pop", "pull", "clean", "clear", "copy", "swap",
+    "push", "push_l", "pop", "pull", "clean", "clear", "copy", "clone", "swap",
     "unoffset", "offset", "call", "call_s", "sys", "ret",
     "jmp", "br",
     "addr", "deref", "store",

@@ -1,9 +1,9 @@
 use crate::{ compiling::Compiler, utils::{ Result, Serial } };
 use std::collections::HashMap;
 
-const INSTRUCTIONS: [&str; 54] = [
+const INSTRUCTIONS: [&str; 55] = [
     "nop",
-    "push", "push_l", "pop", "pull", "clean", "clear", "copy", "swap",
+    "push", "push_l", "pop", "pull", "clean", "clear", "copy", "clone", "swap",
     "unoffset", "offset", "call", "call_s", "sys", "ret",
     "jmp", "br",
     "addr", "deref", "store",
@@ -15,8 +15,8 @@ const INSTRUCTIONS: [&str; 54] = [
     "b_and", "b_or", "b_xor",
 ];
 
-const SYSCALLS: [&str; 7] = [
-    "brk",
+const SYSCALLS: [&str; 8] = [
+    "brk", "err",
     "print", "flush",
     "alloc", "dealloc",
     "memtrans", "memwrite",

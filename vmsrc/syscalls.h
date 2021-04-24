@@ -14,6 +14,10 @@ void brk() {
     exit(0);
 }
 
+void err() {
+    exit(AS(size_t, op_stack + sp - 8));
+}
+
 void print() {
     sp -= 16;
     fwrite((char *) AS(size_t, op_stack + sp), 1, AS(size_t, op_stack + sp + 8), stdout);
@@ -45,7 +49,7 @@ void memwrite() {
 }
 
 void (*syscalls[])() = {
-    brk,
+    brk, err,
     print, flush,
     alloc, dealloc,
     memtrans, memwrite,

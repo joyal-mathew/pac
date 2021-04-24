@@ -1,6 +1,12 @@
 use crate::{ lexing::Type, utils::{ Result, Serial }, parsing::* };
 use std::{ mem, fs, collections::HashMap };
 
+struct ErrorCode;
+impl ErrorCode {
+    const DIVIDE_BY_ZERO: usize = 1;
+    const OUT_OF_INDEX: usize = 2;
+}
+
 #[derive(Clone, Debug)]
 struct Var {
     ptr: usize,
@@ -350,25 +356,84 @@ impl Compiler {
                 }
             }
             Expression::Index(arr, idx) => {
+                let l1 = self.get_label();
+                let l2 = self.get_label();
                 let arr_type = self.calculate(arr, scope)?;
-                let idx_type = self.calculate(idx, scope)?;
 
-                if let Type::Array(inner) = arr_type {
-                    if idx_type != Type::Int {
-                        return err!("{:?} cannot index", idx_type);
+                match arr_type {
+                    Type::Array(inner) => {
+                        emit!(self, "copy");
+                        emit!(self, "jmp .L{}", l2);
+                        emit!(self, "#L{}", l1);
+                        emit!(self, "push_l {}", ErrorCode::OUT_OF_INDEX);
+                        emit!(self, "sys @err");
+                        emit!(self, "#L{}", l2);
+                        emit!(self, "push_l 8");
+                        emit!(self, "i_add");
+                        emit!(self, "deref");
+                        emit!(self, "push_l 24");
+                        emit!(self, "swap");
+                        emit!(self, "i_sub");
+                        emit!(self, "push_l 8");
+                        emit!(self, "swap");
+                        emit!(self, "i_div");
+                        let idx_type = self.calculate(idx, scope)?;
+                        emit!(self, "clone 16");
+                        emit!(self, "i_gte");
+                        emit!(self, "br .L{}", l1);
+                        emit!(self, "swap");
+                        emit!(self, "clean");
+                        emit!(self, "copy");
+                        emit!(self, "push_l 0");
+                        emit!(self, "i_gt");
+                        emit!(self, "br .L{}", l1);
+                        if idx_type != Type::Int {
+                            return err!("{:?} cannot index", idx_type);
+                        }
+
+                        emit!(self, "push_l 8");
+                        emit!(self, "i_mul");
+                        emit!(self, "push_l 24");
+                        emit!(self, "i_add");
+                        emit!(self, "i_add");
+                        emit!(self, "deref");
+
+                        Ok(*inner)
                     }
+                    Type::String => {
+                        emit!(self, "copy");
+                        emit!(self, "jmp .L{}", l2);
+                        emit!(self, "#L{}", l1);
+                        emit!(self, "push_l {}", ErrorCode::OUT_OF_INDEX);
+                        emit!(self, "sys @err");
+                        emit!(self, "#L{}", l2);
+                        emit!(self, "push_l 8");
+                        emit!(self, "i_add");
+                        emit!(self, "deref");
+                        let idx_type = self.calculate(idx, scope)?;
+                        emit!(self, "clone 16");
+                        emit!(self, "i_gte");
+                        emit!(self, "br .L{}", l1);
+                        emit!(self, "swap");
+                        emit!(self, "clean");
+                        emit!(self, "copy");
+                        emit!(self, "push_l 0");
+                        emit!(self, "i_gt");
+                        emit!(self, "br .L{}", l1);
+                        if idx_type != Type::Int {
+                            return err!("{:?} cannot index", idx_type);
+                        }
 
-                    emit!(self, "push_l 8");
-                    emit!(self, "i_mul");
-                    emit!(self, "push_l 24");
-                    emit!(self, "i_add");
-                    emit!(self, "i_add");
-                    emit!(self, "deref");
+                        emit!(self, "push_l 8");
+                        emit!(self, "i_add");
+                        emit!(self, "i_add");
+                        emit!(self, "deref");
+                        emit!(self, "push_l 255");
+                        emit!(self, "b_and");
 
-                    Ok(*inner)
-                }
-                else {
-                    err!("{:?} cannot be indexed", arr_type)
+                        Ok(Type::Str)
+                    }
+                    _ => err!("{:?} cannot be indexed", arr_type),
                 }
             }
             Expression::BinaryOperation(op, lhs, rhs) => {
@@ -391,8 +456,34 @@ impl Compiler {
                                 }
                             }
                             Expression::Index(arr, idx) => {
+                                let l1 = self.get_label();
+                                let l2 = self.get_label();
                                 let arr_type = self.calculate(arr, scope)?;
+                                emit!(self, "copy");
+                                emit!(self, "jmp .L{}", l2);
+                                emit!(self, "#L{}", l1);
+                                emit!(self, "push_l {}", ErrorCode::OUT_OF_INDEX);
+                                emit!(self, "sys @err");
+                                emit!(self, "#L{}", l2);
+                                emit!(self, "push_l 8");
+                                emit!(self, "i_add");
+                                emit!(self, "deref");
+                                emit!(self, "push_l 24");
+                                emit!(self, "swap");
+                                emit!(self, "i_sub");
+                                emit!(self, "push_l 8");
+                                emit!(self, "swap");
+                                emit!(self, "i_div");
                                 let idx_type = self.calculate(idx, scope)?;
+                                emit!(self, "clone 16");
+                                emit!(self, "i_gte");
+                                emit!(self, "br .L{}", l1);
+                                emit!(self, "swap");
+                                emit!(self, "clean");
+                                emit!(self, "copy");
+                                emit!(self, "push_l 0");
+                                emit!(self, "i_gt");
+                                emit!(self, "br .L{}", l1);
 
                                 if idx_type != Type::Int {
                                     return err!("{:?} cannot index", idx_type);
@@ -409,6 +500,7 @@ impl Compiler {
                                         let type_ret = self.calculate(rhs, scope)?;
                                         emit!(self, "pull 0");
                                         emit!(self, "store");
+                                        emit!(self, "clean");
                                         emit!(self, "push 0");
                                         emit!(self, "unoffset {}", scope.ptr);
 
@@ -489,7 +581,20 @@ impl Compiler {
                         Operation::Add => { emit!(self, "i_add"); Ok(Type::Int) }
                         Operation::Subtract => { emit!(self, "i_sub"); Ok(Type::Int) }
                         Operation::Multiply => { emit!(self, "i_mul"); Ok(Type::Int) }
-                        Operation::Divide => { emit!(self, "i_div"); Ok(Type::Int) }
+                        Operation::Divide => {
+                            let l1 = self.get_label();
+                            emit!(self, "swap");
+                            emit!(self, "copy");
+                            emit!(self, "push_l 0");
+                            emit!(self, "i_neq");
+                            emit!(self, "br .L{}", l1);
+                            emit!(self, "push_l {}", ErrorCode::DIVIDE_BY_ZERO);
+                            emit!(self, "sys @err");
+                            emit!(self, "#L{}", l1);
+                            emit!(self, "swap");
+                            emit!(self, "i_div");
+                            Ok(Type::Int)
+                        }
                         Operation::Remainder => { emit!(self, "i_rem"); Ok(Type::Int) }
                         Operation::Equal => { emit!(self, "i_eq"); Ok(Type::Int) }
                         Operation::Inequal => { emit!(self, "i_neq"); Ok(Type::Int) }
