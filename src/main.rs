@@ -11,14 +11,11 @@ mod assembling;
 use std::{ fs, io::prelude::Write };
 
 /* TODO:
- * arrays (figure out how to implement the type, c-like maybe?)
- * make emit a macro and auto format
- * string/array operations
+ * move asm to file
  * structs
  * a->f() notation
  * headers for runtime requirements
  * library functions
- * make functions first-class
  * */
 
 fn main() {

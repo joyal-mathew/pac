@@ -5,6 +5,7 @@ struct ErrorCode;
 impl ErrorCode {
     const DIVIDE_BY_ZERO: usize = 1;
     const OUT_OF_INDEX: usize = 2;
+    const UNDERFLOW: usize = 3;
 }
 
 #[derive(Clone, Debug)]
@@ -424,7 +425,7 @@ impl Compiler {
                             return err!("{:?} cannot index", idx_type);
                         }
 
-                        emit!(self, "push_l 8");
+                        emit!(self, "push_l 16");
                         emit!(self, "i_add");
                         emit!(self, "i_add");
                         emit!(self, "deref");
@@ -459,38 +460,39 @@ impl Compiler {
                                 let l1 = self.get_label();
                                 let l2 = self.get_label();
                                 let arr_type = self.calculate(arr, scope)?;
-                                emit!(self, "copy");
-                                emit!(self, "jmp .L{}", l2);
-                                emit!(self, "#L{}", l1);
-                                emit!(self, "push_l {}", ErrorCode::OUT_OF_INDEX);
-                                emit!(self, "sys @err");
-                                emit!(self, "#L{}", l2);
-                                emit!(self, "push_l 8");
-                                emit!(self, "i_add");
-                                emit!(self, "deref");
-                                emit!(self, "push_l 24");
-                                emit!(self, "swap");
-                                emit!(self, "i_sub");
-                                emit!(self, "push_l 8");
-                                emit!(self, "swap");
-                                emit!(self, "i_div");
-                                let idx_type = self.calculate(idx, scope)?;
-                                emit!(self, "clone 16");
-                                emit!(self, "i_gte");
-                                emit!(self, "br .L{}", l1);
-                                emit!(self, "swap");
-                                emit!(self, "clean");
-                                emit!(self, "copy");
-                                emit!(self, "push_l 0");
-                                emit!(self, "i_gt");
-                                emit!(self, "br .L{}", l1);
-
-                                if idx_type != Type::Int {
-                                    return err!("{:?} cannot index", idx_type);
-                                }
 
                                 match arr_type {
                                     Type::Array(inner) => {
+                                        emit!(self, "copy");
+                                        emit!(self, "jmp .L{}", l2);
+                                        emit!(self, "#L{}", l1);
+                                        emit!(self, "push_l {}", ErrorCode::OUT_OF_INDEX);
+                                        emit!(self, "sys @err");
+                                        emit!(self, "#L{}", l2);
+                                        emit!(self, "push_l 8");
+                                        emit!(self, "i_add");
+                                        emit!(self, "deref");
+                                        emit!(self, "push_l 24");
+                                        emit!(self, "swap");
+                                        emit!(self, "i_sub");
+                                        emit!(self, "push_l 8");
+                                        emit!(self, "swap");
+                                        emit!(self, "i_div");
+                                        let idx_type = self.calculate(idx, scope)?;
+                                        emit!(self, "clone 16");
+                                        emit!(self, "i_gte");
+                                        emit!(self, "br .L{}", l1);
+                                        emit!(self, "swap");
+                                        emit!(self, "clean");
+                                        emit!(self, "copy");
+                                        emit!(self, "push_l 0");
+                                        emit!(self, "i_gt");
+                                        emit!(self, "br .L{}", l1);
+
+                                        if idx_type != Type::Int {
+                                            return err!("{:?} cannot index", idx_type);
+                                        }
+
                                         emit!(self, "offset {}", scope.ptr);
                                         emit!(self, "push_l 8");
                                         emit!(self, "i_mul");
@@ -512,6 +514,55 @@ impl Compiler {
                                         }
                                         else {
                                             err!("mismatched types on assignment: {:?} and {:?}", &*inner, &type_ret)
+                                        }
+                                    }
+                                    Type::String => {
+                                        emit!(self, "copy");
+                                        emit!(self, "jmp .L{}", l2);
+                                        emit!(self, "#L{}", l1);
+                                        emit!(self, "push_l {}", ErrorCode::OUT_OF_INDEX);
+                                        emit!(self, "sys @err");
+                                        emit!(self, "#L{}", l2);
+                                        emit!(self, "push_l 8");
+                                        emit!(self, "i_add");
+                                        emit!(self, "deref");
+                                        let idx_type = self.calculate(idx, scope)?;
+                                        emit!(self, "clone 16");
+                                        emit!(self, "i_gte");
+                                        emit!(self, "br .L{}", l1);
+                                        emit!(self, "swap");
+                                        emit!(self, "clean");
+                                        emit!(self, "copy");
+                                        emit!(self, "push_l 0");
+                                        emit!(self, "i_gt");
+                                        emit!(self, "br .L{}", l1);
+                                        if idx_type != Type::Int {
+                                            return err!("{:?} cannot index", idx_type);
+                                        }
+
+                                        emit!(self, "offset {}", scope.ptr);
+                                        emit!(self, "push_l 16");
+                                        emit!(self, "i_add");
+                                        emit!(self, "i_add");
+                                        emit!(self, "copy");
+                                        emit!(self, "deref");
+                                        emit!(self, "push_l 18446744073709551360");
+                                        emit!(self, "b_and");
+                                        let type_ret = self.calculate(rhs, scope)?;
+                                        emit!(self, "pull 0");
+                                        emit!(self, "push_l 255");
+                                        emit!(self, "b_and");
+                                        emit!(self, "b_or");
+                                        emit!(self, "store");
+                                        emit!(self, "clean");
+                                        emit!(self, "push 0");
+                                        emit!(self, "unoffset {}", scope.ptr);
+
+                                        if type_ret == Type::Str {
+                                            Ok(type_ret)
+                                        }
+                                        else {
+                                            err!("only str can set a string")
                                         }
                                     }
                                     _ => err!("{:?} cannot be indexed", arr_type),
@@ -576,6 +627,56 @@ impl Compiler {
                 let type_r = self.calculate(&*rhs, scope)?.clone();
                 let type_l = self.calculate(&*lhs, scope)?.clone();
 
+                if let (Type::Array(inner), Operation::Push) = (&type_l, op) {
+                    if type_r == **inner {
+                        dbg!(expr);
+                        let l1 = self.get_label();
+                        emit!(self, "offset {}", scope.ptr);
+                        emit!(self, "pull 8");
+                        emit!(self, "copy");
+                        emit!(self, "push_l 8");
+                        emit!(self, "i_add");
+                        emit!(self, "deref");
+                        emit!(self, "push_l 8");
+                        emit!(self, "i_add");
+                        emit!(self, "pop 0");
+                        emit!(self, "copy");
+                        emit!(self, "push_l 8");
+                        emit!(self, "i_add");
+                        emit!(self, "push 0");
+                        emit!(self, "store");
+                        emit!(self, "copy");
+                        emit!(self, "push_l 8");
+                        emit!(self, "i_add");
+                        emit!(self, "deref");
+                        emit!(self, "push 0");
+                        emit!(self, "i_lte");
+                        emit!(self, "br .L{}", l1);
+                        emit!(self, "push_l 8");
+                        emit!(self, "i_add");
+                        emit!(self, "push 0");
+                        emit!(self, "store");
+                        emit!(self, "clean");
+                        emit!(self, "push 0");
+                        emit!(self, "sys @realloc");
+                        emit!(self, "push_l 0");
+                        emit!(self, "#L{}", l1);
+                        emit!(self, "clean");
+                        emit!(self, "push 0");
+                        emit!(self, "push_l 8");
+                        emit!(self, "swap");
+                        emit!(self, "i_sub");
+                        emit!(self, "i_add");
+                        emit!(self, "swap");
+                        emit!(self, "store");
+                        emit!(self, "clean");
+                        emit!(self, "push 8");
+                        emit!(self, "unoffset {}", scope.ptr);
+
+                        return Ok(type_l);
+                    }
+                }
+
                 match (type_r.clone(), type_l.clone()) {
                     (Type::Int, Type::Int) => match op {
                         Operation::Add => { emit!(self, "i_add"); Ok(Type::Int) }
@@ -629,17 +730,53 @@ impl Compiler {
             Expression::UnaryOperation(op, arg) => {
                 let type_ret = self.calculate(&*arg, scope)?;
 
-                if let Type::Array(_) = type_ret {
-                    emit!(self, "push_l 8");
-                    emit!(self, "i_add");
-                    emit!(self, "deref");
-                    emit!(self, "push_l 24");
-                    emit!(self, "swap");
-                    emit!(self, "i_sub");
-                    emit!(self, "push_l 8");
-                    emit!(self, "swap");
-                    emit!(self, "i_div");
-                    return Ok(Type::Int);
+                if let Type::Array(inner) = type_ret.clone() {
+                    match op {
+                        Operation::Length => {
+                            emit!(self, "push_l 8");
+                            emit!(self, "i_add");
+                            emit!(self, "deref");
+                            emit!(self, "push_l 24");
+                            emit!(self, "swap");
+                            emit!(self, "i_sub");
+                            emit!(self, "push_l 8");
+                            emit!(self, "swap");
+                            emit!(self, "i_div");
+                            return Ok(Type::Int);
+                        }
+                        Operation::Pop => {
+                            let l1 = self.get_label();
+                            emit!(self, "offset {}", scope.ptr);
+                            emit!(self, "copy");
+                            emit!(self, "copy");
+                            emit!(self, "push_l 8");
+                            emit!(self, "i_add");
+                            emit!(self, "deref");
+                            emit!(self, "copy");
+                            emit!(self, "push_l 24");
+                            emit!(self, "i_neq");
+                            emit!(self, "br .L{}", l1);
+                            emit!(self, "push_l {}", ErrorCode::UNDERFLOW);
+                            emit!(self, "sys @err");
+                            emit!(self, "#L{}", l1);
+                            emit!(self, "push_l 8");
+                            emit!(self, "swap");
+                            emit!(self, "i_sub");
+                            emit!(self, "pull 0");
+                            emit!(self, "swap");
+                            emit!(self, "push_l 8");
+                            emit!(self, "i_add");
+                            emit!(self, "swap");
+                            emit!(self, "store");
+                            emit!(self, "clean");
+                            emit!(self, "push 0");
+                            emit!(self, "i_add");
+                            emit!(self, "deref");
+                            emit!(self, "unoffset {}", scope.ptr);
+                            return Ok(*inner);
+                        }
+                        _ => ()
+                    }
                 }
 
                 match type_ret {

@@ -333,7 +333,7 @@ impl Parser {
                 }
                 Token::Operator(Operator::OpenBracket) => {
                     self.advance()?;
-                    node = Expression::Index(Box::new(node), Box::new(self.term()?));
+                    node = Expression::Index(Box::new(node), Box::new(self.expression()?));
                     expect!(self, Token::Operator(Operator::CloseBracket));
                 }
                 _ => break,
@@ -373,7 +373,7 @@ impl Parser {
             Token::Operator(Operator::LogicalNot) => Ok(Expression::UnaryOperation(Operation::LogicalNot, Box::new(self.term()?))),
             Token::Operator(Operator::BitwiseNot) => Ok(Expression::UnaryOperation(Operation::BitwiseNot, Box::new(self.term()?))),
             Token::Operator(Operator::Length) => Ok(Expression::UnaryOperation(Operation::Length, Box::new(self.term()?))),
-            Token::Operator(Operator::Push) => Ok(Expression::UnaryOperation(Operation::Pop, Box::new(self.term()?))),
+            Token::Operator(Operator::Pop) => Ok(Expression::UnaryOperation(Operation::Pop, Box::new(self.term()?))),
             Token::Operator(Operator::OpenParenthesis) => {
                 let expr = self.expression()?;
                 expect!(self, Token::Operator(Operator::CloseParenthesis));

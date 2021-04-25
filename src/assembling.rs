@@ -15,10 +15,10 @@ const INSTRUCTIONS: [&str; 55] = [
     "b_and", "b_or", "b_xor",
 ];
 
-const SYSCALLS: [&str; 8] = [
+const SYSCALLS: [&str; 9] = [
     "brk", "err",
     "print", "flush",
-    "alloc", "dealloc",
+    "alloc", "realloc", "dealloc",
     "memtrans", "memwrite",
 ];
 
