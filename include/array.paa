@@ -6,5 +6,20 @@ push 0
 sys @memwrite
 push 0
 clear
+push_l 0
+push 0
+push 0
 push 8
+push_l 32
+sys @alloc
+pull 8
+push_l 32
+sys @memwrite
+push_l 32
+clear
+push 8
+ret
+
+#Fjoin
+sys @makestring
 ret

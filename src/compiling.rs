@@ -50,7 +50,6 @@ impl Scope {
     }
 
     fn get_var(&mut self, name: &String, assign: bool) -> Result<Var> {
-        println!("{} {:?}", assign, self.vars.get(name));
         if assign {
             self.vars.entry(name.to_string()).and_modify(|v| v.assigned = true).or_insert(Var {  type_: Type::Void, ptr: 0, assigned: false, named: false  });
         }
@@ -91,6 +90,8 @@ impl Compiler {
         functions.insert("print_string".to_string(), Var { ptr: 0, type_: Type::Function(Box::new(Type::Void), vec![Type::String]), assigned: true, named: true });
         functions.insert("println_str".to_string(), Var { ptr: 0, type_: Type::Function(Box::new(Type::Void), vec![Type::Str]), assigned: true, named: true });
         functions.insert("println_string".to_string(), Var { ptr: 0, type_: Type::Function(Box::new(Type::Void), vec![Type::String]), assigned: true, named: true });
+
+        functions.insert("join".to_string(), Var { ptr: 0, type_: Type::Function(Box::new(Type::String), vec![Type::Array(Box::new(Type::Str))]), assigned: true, named: true });
 
         Self {
             parser,
@@ -297,10 +298,6 @@ impl Compiler {
                 Ok(Type::String)
             }
             Expression::Term(Symbol::Array(items)) => {
-                let length = items.len() * 8 + 24;
-                emit!(self, "push_l 0");
-                emit!(self, "push_l {}", length);
-                emit!(self, "push_l {}", length);
                 let mut arr_type: Option<Type> = None;
                 for item in items {
                     let item_type = self.calculate(&item, scope)?;
@@ -313,7 +310,7 @@ impl Compiler {
                         arr_type = Some(item_type.clone());
                     }
                 }
-                emit!(self, "push_l {}", length);
+                emit!(self, "push_l {}", items.len() * 8);
                 self.call(Some(".Pmake_array"), scope);
 
                 Ok(if let Some(t) = arr_type {
@@ -493,18 +490,17 @@ impl Compiler {
                                             return err!("{:?} cannot index", idx_type);
                                         }
 
-                                        emit!(self, "offset {}", scope.ptr);
                                         emit!(self, "push_l 8");
                                         emit!(self, "i_mul");
                                         emit!(self, "push_l 24");
                                         emit!(self, "i_add");
                                         emit!(self, "i_add");
                                         let type_ret = self.calculate(rhs, scope)?;
-                                        emit!(self, "pull 0");
+                                        emit!(self, "clone 16");
                                         emit!(self, "store");
                                         emit!(self, "clean");
-                                        emit!(self, "push 0");
-                                        emit!(self, "unoffset {}", scope.ptr);
+                                        emit!(self, "swap");
+                                        emit!(self, "clean");
 
                                         if type_ret == *inner {
                                             Ok(type_ret)
@@ -629,7 +625,6 @@ impl Compiler {
 
                 if let (Type::Array(inner), Operation::Push) = (&type_l, op) {
                     if type_r == **inner {
-                        dbg!(expr);
                         let l1 = self.get_label();
                         emit!(self, "offset {}", scope.ptr);
                         emit!(self, "pull 8");
@@ -813,6 +808,7 @@ impl Compiler {
     }
 
     fn call(&mut self, name: Option<&str>, scope: &Scope) {
+        dbg!(&name);
         let call_instruction = if let Some(s) = name {
             format!("call {}", s)
         }

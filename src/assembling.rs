@@ -15,11 +15,12 @@ const INSTRUCTIONS: [&str; 55] = [
     "b_and", "b_or", "b_xor",
 ];
 
-const SYSCALLS: [&str; 9] = [
+const SYSCALLS: [&str; 10] = [
     "brk", "err",
     "print", "flush",
     "alloc", "realloc", "dealloc",
     "memtrans", "memwrite",
+    "makestring",
 ];
 
 pub struct Assembler {

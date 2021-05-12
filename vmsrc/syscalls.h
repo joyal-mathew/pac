@@ -51,9 +51,30 @@ void memwrite() {
     memcpy((void *) AS(size_t, op_stack + sp), op_stack + sp - AS(size_t, op_stack + sp + 8), AS(size_t, op_stack + sp + 8));
 }
 
+void makestring() {
+    long long *arr = (long long *) AS(size_t, op_stack + sp - 8);
+    long long len = (arr[1] - 24) / 8;
+    char *str = malloc(len + 16);
+
+    // printf("%lld %lld %lld %lld\n", arr[0], arr[1], arr[2], arr[3]);
+    // printf("%lld | ", len);
+
+    for (long long i = 0; i < len; ++i) {
+        str[i + 16] = arr[i + 3];
+        // printf("(%hhu, %c) ", str[i + 16], str[i + 16]);
+    }
+    // printf("\n");
+
+    AS(long long, str) = 0;
+    AS(long long, str + 8) = len;
+
+    AS(size_t, op_stack + sp - 8) = (size_t) str;
+}
+
 void (*syscalls[])() = {
     brk, err,
     print, flush,
     alloc, realloc_, dealloc,
     memtrans, memwrite,
+    makestring,
 };
