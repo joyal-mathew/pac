@@ -178,3 +178,7 @@ Three stacks are used in execution.
 1. Operation Stack to perform calculations
 2. Variable Stack to store variables
 3. Call Stack to keep track of function calls
+
+The size of these stacks default to 1KiB but can be set with a special comment:
+
+`#@ OPERATIONS_SIZE VARIABLES_SIZE CALL_SIZE#`
