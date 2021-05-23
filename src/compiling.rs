@@ -135,10 +135,6 @@ impl Compiler {
 
         self.program = format!("{}\n{}", self.program, self.data);
 
-        for line in self.program.split('\n') {
-            println!("{}", line);
-        }
-
         Ok(&self.program)
     }
 
@@ -673,7 +669,6 @@ impl Compiler {
     }
 
     fn call(&mut self, name: Option<&str>, scope: &Scope) {
-        dbg!(&name);
         let call_instruction = if let Some(s) = name {
             format!("call {}", s)
         }

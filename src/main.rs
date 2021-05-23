@@ -25,11 +25,4 @@ fn main() {
         },
         Err(s) => eprintln!("{}", s),
     }
-
-/*     loop {
-        match assembling::Assembler::new(compiling::Compiler::new(parsing::Parser::new(lexing::Lexer::new(utils::input("> ").unwrap())))).assemble() {
-            Ok(b) => executing::Executer::new(b).run(),
-            Err(s) => eprintln!("{}", s),
-        }
-    } */
 }

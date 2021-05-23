@@ -3,7 +3,7 @@
 #include "data.h"
 #include "instructions.h"
 
-int main(int argc, char **argv) {
+int main() {
     FILE *fptr;
     size_t len;
 
@@ -28,16 +28,6 @@ int main(int argc, char **argv) {
 
     for (;;) {
         int i = program[pc++];
-        if (*argv[1] == 'O') {
-            printf("%d\tsp: %llu\tfp: %llu\tcp: %llu\t pc: %llu\t", i, sp, fp, cp, pc - 1);
-            debug(names[i], sizeof(stacks)/sizeof(*stacks), "ovc", stacks);
-            if (*argv[3] == 'O') getchar();
-        }
         instructions[i]();
-        if (*argv[2] == 'O') {
-            printf("sp: %llu\tfp:\t%llu\tcp:%llu\t", sp, fp, cp);
-            debug(names[i], sizeof(stacks)/sizeof(*stacks), "ovc", stacks);
-            if (*argv[3] == 'O') getchar();
-        }
     }
 }

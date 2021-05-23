@@ -3,14 +3,6 @@
 #include "data.h"
 
 void brk() {
-    printf("\n----\n");
-    for (int i = 0; i <= 64; i += 8) {
-        printf("%lld ", AS(long long, var_stack + i));
-    }
-    printf("\n----\n");
-
-    // TODO: figure out why can't free op_stack/program here
-
     exit(0);
 }
 
