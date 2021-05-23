@@ -12,6 +12,7 @@ use std::{ fs, io::prelude::Write };
 
 /* TODO:
  * make variable section
+ * manual memory management
  * headers for runtime requirements
  * */
 

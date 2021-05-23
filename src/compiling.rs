@@ -626,6 +626,10 @@ impl Compiler {
                             self.call(Some(".Ppop"), scope);
                             return Ok(*inner);
                         }
+                        Operation::Dealloc => {
+                            self.call(Some(".Pdealloc"), scope);
+                            return Ok(Type::Void);
+                        }
                         _ => ()
                     }
                 }
@@ -648,6 +652,11 @@ impl Compiler {
                             emit!(self, "i_add");
                             emit!(self, "deref");
                             Ok(Type::Int)
+                        }
+                        Operation::Dealloc => {
+                            emit!(self, "sys @dealloc");
+                            emit!(self, "push_l 0");
+                            return Ok(Type::Void);
                         }
                         _ => err!("operation is not defined for this type"),
                     }

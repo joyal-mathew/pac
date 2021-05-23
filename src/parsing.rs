@@ -30,6 +30,7 @@ pub enum Operation {
     Length,
     Pop,
     Push,
+    Dealloc,
 }
 
 #[derive(Debug)]
@@ -374,6 +375,7 @@ impl Parser {
             Token::Operator(Operator::BitwiseNot) => Ok(Expression::UnaryOperation(Operation::BitwiseNot, Box::new(self.term()?))),
             Token::Operator(Operator::Length) => Ok(Expression::UnaryOperation(Operation::Length, Box::new(self.term()?))),
             Token::Operator(Operator::Pop) => Ok(Expression::UnaryOperation(Operation::Pop, Box::new(self.term()?))),
+            Token::Operator(Operator::Dealloc) => Ok(Expression::UnaryOperation(Operation::Dealloc, Box::new(self.term()?))),
             Token::Operator(Operator::OpenParenthesis) => {
                 let expr = self.expression()?;
                 expect!(self, Token::Operator(Operator::CloseParenthesis));

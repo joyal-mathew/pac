@@ -126,6 +126,16 @@ i_add
 deref
 ret
 
+#Pdealloc
+copy
+push_l 24
+i_add
+deref
+sys @dealloc
+sys @dealloc
+push_l 0
+ret
+
 #Fjoin
 sys @makestring
 ret
