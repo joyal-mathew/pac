@@ -15,8 +15,6 @@ int main() {
     fread(program, 1, len, fptr);
     fclose(fptr);
 
-    printf("%llu %llu %llu", AS(size_t, program + 0), AS(size_t, program + 8), AS(size_t, program + 16));
-
     op_stack = malloc(AS(size_t, program + 0));
     var_stack = malloc(AS(size_t, program + 8));
     call_stack = malloc(AS(size_t, program + 16));

@@ -206,7 +206,7 @@ impl Lexer {
             '#' => {
                 let mut comment = String::new();
 
-                while self.advance() != '#' {
+                while self.advance() != '\n' {
                     if self.current == '\0' {
                         break;
                     }
