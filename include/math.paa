@@ -1,0 +1,25 @@
+#Pdivide
+swap
+copy
+push_l 0
+i_neq
+br .d_noerror
+push_l !divide_by_zero
+sys @err
+#d_noerror
+swap
+i_div
+ret
+
+#Premainder
+swap
+copy
+push_l 0
+i_neq
+br .r_noerror
+push_l !divide_by_zero
+sys @err
+#r_noerror
+swap
+i_rem
+ret

@@ -20,6 +20,112 @@ clear
 push 8
 ret
 
+#Pindex_check
+jmp .ic_skip
+#ic_err
+push_l !out_of_index
+sys @err
+#ic_skip
+pull 0
+i_gte
+br .ic_err
+push 0
+push_l 0
+i_gt
+br .ic_err
+ret
+
+#Ppush
+copy
+copy
+push_l 8
+i_add
+deref
+swap
+push_l 16
+i_add
+deref
+i_gte
+br .p_norealloc
+copy
+copy
+copy
+push_l 24
+i_add
+deref
+swap
+push_l 8
+i_add
+deref
+push_l 8
+i_add
+sys @realloc
+swap
+push_l 24
+i_add
+swap
+store
+clean
+#p_norealloc
+swap
+clone 16
+clean
+copy
+push_l 24
+i_add
+deref
+swap
+push_l 8
+i_add
+deref
+i_add
+swap
+store
+clean
+copy
+push_l 8
+i_add
+copy
+deref
+push_l 8
+i_add
+store
+clean
+ret
+
+#Ppop
+copy
+push_l 8
+i_add
+deref
+push_l 0
+i_neq
+br .p_nonzero
+push_l !underflow
+sys @err
+#p_nonzero
+copy
+push_l 8
+i_add
+copy
+deref
+push_l 8
+swap
+i_sub
+store
+clean
+copy
+push_l 8
+i_add
+deref
+swap
+push_l 24
+i_add
+deref
+i_add
+deref
+ret
+
 #Fjoin
 sys @makestring
 ret

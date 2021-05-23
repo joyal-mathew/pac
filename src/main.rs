@@ -11,11 +11,8 @@ mod assembling;
 use std::{ fs, io::prelude::Write };
 
 /* TODO:
- * move asm to file
- * structs
- * a->f() notation
+ * make variable section
  * headers for runtime requirements
- * library functions
  * */
 
 fn main() {
