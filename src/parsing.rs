@@ -45,6 +45,7 @@ pub enum Symbol {
     Type(Type),
 }
 
+#[allow(dead_code)] // TODO: implement structures
 #[derive(Debug)]
 pub enum TopLevelDeclaration {
     Function(String, Type, Vec<Statement>, Statement),
@@ -73,7 +74,7 @@ pub enum Expression {
 }
 
 pub struct Parser {
-    lexer: Lexer,
+    pub lexer: Lexer,
     current: Token,
 }
 

@@ -98,6 +98,10 @@ pub struct Lexer {
     chars: Vec<char>,
     current: char,
 
+    pub operations_stack_size: u64,
+    pub variables_stack_size: u64,
+    pub call_stack_size: u64,
+
     operators: HashMap<&'static str, Operator>,
     keywords: HashMap<&'static str, Keyword>,
     types: HashMap<&'static str, Type>,
@@ -176,6 +180,10 @@ impl Lexer {
             chars: source.chars().rev().collect(),
             current: ' ',
 
+            operations_stack_size: 1024,
+            variables_stack_size: 1024,
+            call_stack_size: 1024,
+
             operators,
             keywords,
             types,
@@ -195,6 +203,32 @@ impl Lexer {
             '\'' => self.str(),
             '"' => self.string(),
             '\0' => Ok(Token::EndOfFile),
+            '#' => {
+                let mut comment = String::new();
+
+                while self.advance() != '#' {
+                    if self.current == '\0' {
+                        break;
+                    }
+
+                    comment.push(self.current);
+                }
+
+                if comment.starts_with('@') {
+                    let config = comment.split_ascii_whitespace().collect::<Vec<&str>>();
+
+                    if config.len() == 4 {
+                        if let (Ok(o), Ok(v), Ok(c)) = (config[1].parse::<u64>(), config[2].parse::<u64>(), config[3].parse::<u64>()) {
+                            self.operations_stack_size = o * 8;
+                            self.variables_stack_size = v * 8;
+                            self.call_stack_size = c * 8;
+                        }
+                    }
+                }
+
+                self.advance();
+                self.next()
+            }
             _ => err!("invalid character: {}", self.current),
         }
     }

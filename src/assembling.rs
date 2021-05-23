@@ -57,7 +57,7 @@ impl Assembler {
             opcodes: create_index_map(&OPCODES),
             syscalls: create_index_map(&SYSCALLS),
             error_codes: create_index_map(&ERROR_CODES),
-            next_byte_index: 0,
+            next_byte_index: 24,
             output: Vec::new(),
             labels: HashMap::new(),
         }
@@ -65,6 +65,10 @@ impl Assembler {
 
     pub fn assemble(mut self) -> Result<Vec<u8>> {
         let commands: Vec<String> = self.compiler.compile()?.split_ascii_whitespace().map(|s| s.to_string()).collect();
+
+        self.output.extend(&self.compiler.parser.lexer.operations_stack_size.serialize());
+        self.output.extend(&self.compiler.parser.lexer.variables_stack_size.serialize());
+        self.output.extend(&self.compiler.parser.lexer.call_stack_size.serialize());
 
         for command in &commands {
             match command {

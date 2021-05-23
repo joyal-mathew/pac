@@ -62,14 +62,13 @@ impl Scope {
 }
 
 pub struct Compiler {
-    parser: Parser,
+    pub parser: Parser,
 
     data: String,
     program: String,
 
     functions: HashMap<String, Var>,
     label: usize,
-    would_alloc: [Type; 2],
 
     break_label: Vec<usize>,
     continue_label: Vec<usize>,
@@ -92,7 +91,6 @@ impl Compiler {
             program: String::new(),
             functions,
             label: 0,
-            would_alloc: [ Type::String, Type::Array(Box::new(Type::Void)) ],
             break_label: Vec::new(),
             continue_label: Vec::new(),
         }
@@ -152,7 +150,7 @@ impl Compiler {
                 }
             }
 
-            let returns = self.evaluate(block, &mut scope, return_type.clone())?;
+            let returns = self.evaluate(block, &mut scope, return_type.clone(), true)?;
 
             if let Type::Void = return_type {
                 if !returns {
@@ -176,13 +174,18 @@ impl Compiler {
         }
     }
 
-    fn evaluate(&mut self, statement: &Statement, scope: &mut Scope, ret: Type) -> Result<bool> {
+    fn evaluate(&mut self, statement: &Statement, scope: &mut Scope, ret: Type, allow_dec: bool) -> Result<bool> {
         match statement {
             Statement::Declaration(t, idents) => {
-                for ident in idents {
-                    scope.declare(ident.clone(), t.clone(), false)?;
+                if allow_dec {
+                    for ident in idents {
+                        scope.declare(ident.clone(), t.clone(), false)?;
+                    }
+                    Ok(false)
                 }
-                Ok(false)
+                else {
+                    err!("variable declarations are only allowed in the base level of a function")
+                }
             }
             Statement::Expression(e) => {
                 self.calculate(e, scope)?;
@@ -192,7 +195,7 @@ impl Compiler {
             Statement::Block(statements) => {
                 let mut r = false;
                 for s in statements {
-                    r = r || self.evaluate(s, scope, ret.clone())?;
+                    r = r || self.evaluate(s, scope, ret.clone(), allow_dec)?;
                 }
                 Ok(r)
             }
@@ -206,10 +209,10 @@ impl Compiler {
                 }
 
                 emit!(self, "br .L{}", l1);
-                let r1 = self.evaluate(&*on_else, scope, ret.clone())?;
+                let r1 = self.evaluate(&*on_else, scope, ret.clone(), false)?;
                 emit!(self, "jmp .L{}", l2);
                 emit!(self, "#L{}", l1);
-                let r2 = self.evaluate(&*on_if, scope, ret.clone())?;
+                let r2 = self.evaluate(&*on_if, scope, ret.clone(), false)?;
                 emit!(self, "#L{}", l2);
 
                 Ok(r1 & r2)
@@ -223,7 +226,7 @@ impl Compiler {
                 emit!(self, "#L{}", l1);
                 self.break_label.push(l3);
                 self.continue_label.push(l2);
-                self.evaluate(&*block, scope, ret)?;
+                self.evaluate(&*block, scope, ret, false)?;
                 self.break_label.pop();
                 self.continue_label.pop();
                 emit!(self, "#L{}", l2);

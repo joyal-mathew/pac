@@ -15,19 +15,13 @@ int main() {
     fread(program, 1, len, fptr);
     fclose(fptr);
 
-    op_stack = malloc(256);
-    var_stack = malloc(256);
-    call_stack = malloc(256);
-    alloc_stack = malloc(256);
+    printf("%llu %llu %llu", AS(size_t, program + 0), AS(size_t, program + 8), AS(size_t, program + 16));
 
-    char *stacks[] = {
-        op_stack,
-        var_stack,
-        call_stack,
-    };
+    op_stack = malloc(AS(size_t, program + 0));
+    var_stack = malloc(AS(size_t, program + 8));
+    call_stack = malloc(AS(size_t, program + 16));
 
-    for (;;) {
-        int i = program[pc++];
-        instructions[i]();
-    }
+    pc = 24;
+
+    for (;;) instructions[program[pc++]]();
 }

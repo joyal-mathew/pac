@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 #[macro_use]
 mod utils;
 
@@ -11,9 +9,10 @@ mod assembling;
 use std::{ fs, io::prelude::Write };
 
 /* TODO:
- * make variable section
- * manual memory management
- * headers for runtime requirements
+ * automatic memory management
+ * automatic stack allocation size
+ * structures
+ * helpful error messages
  * */
 
 fn main() {
