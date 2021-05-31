@@ -29,15 +29,18 @@ void flush() {
 
 void alloc() {
     AS(size_t, op_stack + sp - 8) = (size_t) malloc(AS(size_t, op_stack + sp - 8));
+    // printf("ALLOC [%llu]\n", AS(size_t, op_stack + sp - 8));
 }
 
 void realloc_() {
     sp -= 8;
+    // printf("REALLOC [%llu]\n", AS(size_t, op_stack + sp - 8));
     AS(size_t, op_stack + sp - 8) = (size_t) realloc((void *) AS(size_t, op_stack + sp - 8), AS(size_t, op_stack + sp));
 }
 
 void dealloc() {
     sp -= 8;
+    // printf("DEALLOC [%llu]\n", AS(size_t, op_stack + sp));
     free((void *) AS(size_t, op_stack + sp));
 }
 

@@ -165,6 +165,7 @@ impl Lexer {
         types.insert("array", Type::Array(Box::new(Type::Int)));
 
         escapes.insert('n', '\n');
+        escapes.insert('r', '\r');
         escapes.insert('t', '\t');
         escapes.insert('\'', '\'');
         escapes.insert('\\', '\\');
@@ -192,6 +193,16 @@ impl Lexer {
             '\'' => self.str(),
             '"' => self.string(),
             '\0' => Ok(Token::EndOfFile),
+            '#' => {
+                while self.advance() != '\n' {
+                    if self.current == '\0' {
+                        break;
+                    }
+                }
+
+                self.advance();
+                self.next()
+            }
             _ => err!("invalid character: {}", self.current),
         }
     }

@@ -1,0 +1,39 @@
+#Pincref
+copy
+deref
+push_l 1
+i_add
+store
+ret
+
+#Pdecref
+copy
+deref
+push_l 1
+swap
+i_sub
+store
+ret
+
+#Pdroparr
+copy
+deref
+br .da_nodrop
+copy
+push_l 24
+i_add
+deref
+sys @dealloc
+sys @dealloc
+push_l 0
+#da_nodrop
+ret
+
+#Pdropstr
+copy
+deref
+br .ds_nodrop
+sys @dealloc
+push_l 0
+#ds_nodrop
+ret

@@ -21,12 +21,20 @@ fn create_signature(return_type: Type, params: &Vec<Statement>) -> Type {
     Type::Function(Box::new(return_type), param_types)
 }
 
+fn is_array(t: &Type) -> bool {
+    mem::discriminant(t) == mem::discriminant(&Type::Array(Box::new(Type::Void)))
+}
+
 fn is_main(sig: &Type) -> bool {
     if let Type::Function(return_type, param_types) = sig {
         return **return_type == Type::Void && param_types.is_empty()
     }
 
     return false;
+}
+
+fn is_alloc(t: &Type) -> bool {
+    is_array(t) || *t == Type::String || *t == Type::ArrayInfer
 }
 
 struct Scope {
@@ -44,7 +52,7 @@ impl Scope {
 
     fn get_var(&mut self, name: &String, assign: bool) -> Result<Var> {
         if assign {
-            self.vars.entry(name.to_string()).and_modify(|v| v.assigned = true).or_insert(Var {  type_: Type::Void, ptr: 0, assigned: false, named: false  });
+            self.vars.entry(name.to_string()).and_modify(|v| v.assigned = true);
         }
         self.vars.get(name).cloned().ok_or(format!("undefined variable {}", name))
     }
@@ -69,7 +77,6 @@ pub struct Compiler {
 
     functions: HashMap<String, Var>,
     label: usize,
-    would_alloc: [Type; 2],
 
     break_label: Vec<usize>,
     continue_label: Vec<usize>,
@@ -92,7 +99,6 @@ impl Compiler {
             program: String::new(),
             functions,
             label: 0,
-            would_alloc: [ Type::String, Type::Array(Box::new(Type::Void)) ],
             break_label: Vec::new(),
             continue_label: Vec::new(),
         }
@@ -106,7 +112,7 @@ impl Compiler {
 
         for declaration in &declarations {
             match declaration {
-                TopLevelDeclaration::Function(name, return_type, signature, _) => if self.functions.contains_key(name) {
+                TopLevelDeclaration::Function(name, return_type, signature, _, _) => if self.functions.contains_key(name) {
                     return err!("redefinition of function");
                 }
                 else {
@@ -142,8 +148,33 @@ impl Compiler {
         Ok(&self.program)
     }
 
+    fn drop_one(&mut self, t: &Type, scope: &Scope) {
+        match t {
+            Type::Array(_) => self.call(Some(".Pdroparr"), scope, false),
+            Type::String => self.call(Some(".Pdropstr"), scope, false),
+            _ => (),
+        }
+    }
+
+    fn drop_all(&mut self, scope: &Scope, no_drop: Option<&String>) {
+        for (ident, var) in scope.vars.iter() {
+            if is_alloc(&var.type_) && var.assigned {
+                emit!(self, "push {}", var.ptr);
+                self.call(Some(".Pdecref"), scope, false);
+                if let Some(s) = no_drop {
+                    if ident == s {
+                        emit!(self, "clean");
+                        continue;
+                    }
+                }
+                self.drop_one(&var.type_, scope);
+                emit!(self, "clean");
+            }
+        }
+    }
+
     fn function(&mut self, func: &TopLevelDeclaration) -> Result<()> {
-        if let TopLevelDeclaration::Function(name, return_type, params, block) = func {
+        if let TopLevelDeclaration::Function(name, return_type, params, local_vars, block) = func {
             emit!(self, "\n#F{}", name);
             let mut scope = Scope::new(&self.functions);
 
@@ -151,7 +182,19 @@ impl Compiler {
                 if let Statement::Declaration(t, idents) = param {
                     for ident in idents {
                         let ptr = scope.declare(ident.to_string(), t.clone(), true)?;
-                        emit!(self, "pop {}", ptr);
+                        emit!(self, "pull {}", ptr);
+                        if is_alloc(t) {
+                            self.call(Some(".Pincref"), &scope, false);
+                        }
+                        emit!(self, "clean");
+                    }
+                }
+            }
+
+            for var in local_vars {
+                if let Statement::Declaration(t, idents) = var {
+                    for ident in idents {
+                        scope.declare(ident.to_string(), t.clone(), false)?;
                     }
                 }
             }
@@ -160,6 +203,7 @@ impl Compiler {
 
             if let Type::Void = return_type {
                 if !returns {
+                    self.drop_all(&scope, None);
                     emit!(self, "push_l 0");
                     emit!(self, "ret");
                 }
@@ -189,7 +233,8 @@ impl Compiler {
                 Ok(false)
             }
             Statement::Expression(e) => {
-                self.calculate(e, scope)?;
+                let ret = self.calculate(e, scope)?;
+                self.drop_one(&ret, scope);
                 emit!(self, "clean");
                 Ok(false)
             }
@@ -241,9 +286,12 @@ impl Compiler {
                 Ok(false)
             }
             Statement::Return(expr) => {
+                let mut no_drop = None;
                 if let Some(e) = expr {
-                    if self.calculate(e, scope)? != ret {
-                        return err!("invalid return type");
+                    Self::validate_types(ret, self.calculate(e, scope)?)?;
+
+                    if let Expression::Term(Symbol::Identifier(s)) = e {
+                        no_drop = Some(s);
                     }
                 }
                 else {
@@ -253,6 +301,8 @@ impl Compiler {
 
                     emit!(self, "push_l 0");
                 }
+
+                self.drop_all(scope, no_drop);
 
                 emit!(self, "ret");
 
@@ -287,7 +337,7 @@ impl Compiler {
                 let ld = self.write(s);
                 emit!(self, "push_l .L{}", ld);
                 emit!(self, "push_l {}", s.len() + 16);
-                self.call(Some(".Pmake_string"), scope);
+                self.call(Some(".Pmake_string"), scope, true);
                 Ok(Type::String)
             }
             Expression::Term(Symbol::Array(items)) => {
@@ -304,7 +354,7 @@ impl Compiler {
                     }
                 }
                 emit!(self, "push_l {}", items.len() * 8);
-                self.call(Some(".Pmake_array"), scope);
+                self.call(Some(".Pmake_array"), scope, true);
 
                 Ok(if let Some(t) = arr_type {
                     Type::Array(Box::new(t))
@@ -333,10 +383,10 @@ impl Compiler {
                 }
 
                 let signature = self.calculate(name, scope)?;
-                self.call(None, scope);
+                self.call(None, scope, true);
 
                 if let Type::Function(ret, params) = signature {
-                    if called_sig.len() != params.len() || called_sig.iter().rev().zip(params.iter()).any(|s| s.0 != s.1) {
+                    if called_sig.len() != params.len() || called_sig.iter().rev().zip(params.iter()).any(|s| !Self::types_match(s.1.clone(), s.0.clone())) {
                         return err!("incorrect signature on function call, expected {:?} got {:?}", params, called_sig);
                     }
 
@@ -362,7 +412,7 @@ impl Compiler {
                         emit!(self, "push_l 8");
                         emit!(self, "i_mul");
                         emit!(self, "clone 16");
-                        self.call(Some(".Pindex_check"), scope);
+                        self.call(Some(".Pindex_check"), scope, true);
                         emit!(self, "swap");
                         emit!(self, "clean");
                         emit!(self, "swap");
@@ -384,7 +434,7 @@ impl Compiler {
                             return err!("{:?} cannot index", idx_type);
                         }
                         emit!(self, "clone 16");
-                        self.call(Some(".Pindex_check"), scope);
+                        self.call(Some(".Pindex_check"), scope, true);
                         emit!(self, "swap");
                         emit!(self, "clean");
                         emit!(self, "push_l 16");
@@ -404,19 +454,22 @@ impl Compiler {
                     Operation::Assign => {
                         return match &**lhs {
                             Expression::Term(Symbol::Identifier(s)) => {
+                                let assigned = scope.get_var(&s, false)?.assigned;
                                 let var = scope.get_var(&s, true)?;
+                                if is_alloc(&var.type_) && assigned {
+                                    emit!(self, "push {}", var.ptr);
+                                    self.call(Some(".Pdecref"), scope, false);
+                                    self.drop_one(&var.type_, scope);
+                                    emit!(self, "clean");
+                                }
                                 let type_ret = self.calculate(rhs, scope)?;
                                 emit!(self, "pull {}", var.ptr);
 
-                                if type_ret == var.type_ {
-                                    Ok(type_ret)
+                                if is_alloc(&type_ret) {
+                                    self.call(Some(".Pincref"), scope, false);
                                 }
-                                else if mem::discriminant(&var.type_) == mem::discriminant(&Type::Array(Box::new(Type::Void))) {
-                                    Self::infer(var.type_, type_ret)
-                                }
-                                else {
-                                    err!("mismatched types on assignment: {:?} and {:?}", &var.type_, &type_ret)
-                                }
+
+                                Self::validate_types(var.type_, type_ret)
                             }
                             Expression::Index(arr, idx) => {
                                 let arr_type = self.calculate(arr, scope)?;
@@ -434,7 +487,7 @@ impl Compiler {
                                         emit!(self, "push_l 8");
                                         emit!(self, "i_mul");
                                         emit!(self, "clone 16");
-                                        self.call(Some(".Pindex_check"), scope);
+                                        self.call(Some(".Pindex_check"), scope, true);
                                         emit!(self, "swap");
                                         emit!(self, "clean");
                                         emit!(self, "swap");
@@ -443,18 +496,13 @@ impl Compiler {
                                         emit!(self, "deref");
                                         emit!(self, "i_add");
                                         let type_ret = self.calculate(rhs, scope)?;
+                                        emit!(self, "swap");
+                                        emit!(self, "clone 16");
+                                        emit!(self, "clean");
                                         emit!(self, "store");
                                         emit!(self, "clean");
 
-                                        if type_ret == *inner {
-                                            Ok(type_ret)
-                                        }
-                                        else if mem::discriminant(&*inner) == mem::discriminant(&Type::Array(Box::new(Type::Void))) {
-                                            Self::infer(*inner, type_ret)
-                                        }
-                                        else {
-                                            err!("mismatched types on assignment: {:?} and {:?}", &*inner, &type_ret)
-                                        }
+                                        Self::validate_types(*inner, type_ret)
                                     }
                                     Type::String => {
                                         emit!(self, "copy");
@@ -466,7 +514,7 @@ impl Compiler {
                                             return err!("{:?} cannot index", idx_type);
                                         }
                                         emit!(self, "clone 16");
-                                        self.call(Some(".Pindex_check"), scope);
+                                        self.call(Some(".Pindex_check"), scope, true);
                                         emit!(self, "swap");
                                         emit!(self, "clean");
 
@@ -559,7 +607,7 @@ impl Compiler {
 
                 if let (Type::Array(inner), Operation::Push) = (&type_l, op) {
                     if type_r == **inner {
-                        self.call(Some(".Ppush"), scope);
+                        self.call(Some(".Ppush"), scope, false);
 
                         return Ok(type_l);
                     }
@@ -571,11 +619,11 @@ impl Compiler {
                         Operation::Subtract => { emit!(self, "i_sub"); Ok(Type::Int) }
                         Operation::Multiply => { emit!(self, "i_mul"); Ok(Type::Int) }
                         Operation::Divide => {
-                            self.call(Some(".Pdivide"), scope);
+                            self.call(Some(".Pdivide"), scope, false);
                             Ok(Type::Int)
                         }
                         Operation::Remainder => {
-                            self.call(Some(".Premainder"), scope);
+                            self.call(Some(".Premainder"), scope, false);
                             Ok(Type::Int)
                         }
                         Operation::Equal => { emit!(self, "i_eq"); Ok(Type::Int) }
@@ -623,7 +671,7 @@ impl Compiler {
                             return Ok(Type::Int);
                         }
                         Operation::Pop => {
-                            self.call(Some(".Ppop"), scope);
+                            self.call(Some(".Ppop"), scope, false);
                             return Ok(*inner);
                         }
                         _ => ()
@@ -663,8 +711,7 @@ impl Compiler {
         self.program.push('\n');
     }
 
-    fn call(&mut self, name: Option<&str>, scope: &Scope) {
-        dbg!(&name);
+    fn call(&mut self, name: Option<&str>, scope: &Scope, frame: bool) {
         let call_instruction = if let Some(s) = name {
             format!("call {}", s)
         }
@@ -672,7 +719,7 @@ impl Compiler {
             "call_s".to_string()
         };
 
-        if scope.ptr != 0 {
+        if scope.ptr != 0 && frame {
             emit!(self, "offset {}", scope.ptr);
             emit!(self, "{}", call_instruction);
             emit!(self, "unoffset {}", scope.ptr);
@@ -721,16 +768,31 @@ impl Compiler {
         Ok(())
     }
 
-    fn infer(stated: Type, seen: Type) -> Result<Type> {
-        let errmsg = err!("mismatched types, {:?} and {:?}", stated, seen);
-        if let Type::ArrayInfer = seen {
+    fn validate_types(stated: Type, seen: Type) -> Result<Type> {
+        if Self::types_match(stated.clone(), seen.clone()) {
             Ok(stated)
         }
-        else if let (Type::Array(stated_inner), Type::Array(seen_inner)) = (stated, seen) {
-            Self::infer(*stated_inner, *seen_inner)
+        else {
+            err!("mimatched types {:?} and {:?}", stated, seen)
+        }
+    }
+
+    fn types_match(stated: Type, seen: Type) -> bool {
+        if is_array(&stated) {
+            if seen == Type::ArrayInfer {
+                true
+            }
+            else {
+                if let (Type::Array(stated_inner), Type::Array(seen_inner)) = (stated, seen) {
+                    Self::types_match(*stated_inner, *seen_inner)
+                }
+                else {
+                    false
+                }
+            }
         }
         else {
-            errmsg
+            stated == seen
         }
     }
 }

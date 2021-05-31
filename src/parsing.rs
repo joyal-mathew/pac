@@ -45,9 +45,10 @@ pub enum Symbol {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum TopLevelDeclaration {
-    Function(String, Type, Vec<Statement>, Statement),
-    Structure,
+    Function(String, Type, Vec<Statement>, Vec<Statement>, Statement),
+    Structure, // TODO: in the future maybe
 }
 
 #[derive(Debug)]
@@ -119,9 +120,18 @@ impl Parser {
         }
 
         expect!(self, Token::Operator(Operator::CloseParenthesis));
+
+        let mut local_vars = Vec::new();
+
+        while let Token::Keyword(Keyword::Var) = self.current {
+            local_vars.push(self.delcaration()?);
+        }
+
+        expect!(self, Token::Keyword(Keyword::Do));
+
         let block = self.block(&[Token::Keyword(Keyword::End)])?;
         self.advance()?;
-        Ok(TopLevelDeclaration::Function(name, return_type, signature, block))
+        Ok(TopLevelDeclaration::Function(name, return_type, signature, local_vars, block))
     }
 
     fn block(&mut self, terminators: &[Token]) -> Result<Statement> {
@@ -144,7 +154,6 @@ impl Parser {
             Token::Keyword(Keyword::While) => self.while_loop(),
             _ => {
                 let res = match self.current {
-                    Token::Keyword(Keyword::Var) => self.delcaration()?,
                     Token::Keyword(Keyword::Return) => self.return_statement()?,
                     Token::Keyword(Keyword::Break) => Statement::Break(self.depth()?),
                     Token::Keyword(Keyword::Continue) => Statement::Continue(self.depth()?),

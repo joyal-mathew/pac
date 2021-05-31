@@ -1,6 +1,30 @@
 #Fprint_str
-addr
+copy
+push_l 0
+swap
+#pst_loop
+copy
+push_l 255
+b_and
+i_not
+br .pst_done
+swap
+copy
 push_l 8
+i_eq
+br .pst_done
+push_l 1
+i_add
+swap
+push_l 8
+swap
+shr
+jmp .pst_loop
+#pst_done
+clean
+pop 0
+addr
+push 0
 sys @print
 ret
 
@@ -14,6 +38,9 @@ i_add
 swap
 deref
 sys @print
+copy
+call .Pdropstr
+clean
 ret
 
 #Fprintln_str

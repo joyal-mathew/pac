@@ -45,7 +45,7 @@ swap
 push_l 16
 i_add
 deref
-i_gte
+i_gt
 br .p_norealloc
 copy
 copy

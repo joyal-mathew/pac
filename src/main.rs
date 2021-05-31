@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 #[macro_use]
 mod utils;
 
@@ -8,27 +6,37 @@ mod parsing;
 mod compiling;
 mod assembling;
 
-use std::{ fs, io::prelude::Write };
+use std::{ fs, env, io::{ self, prelude::Write } };
 
 /* TODO:
  * make variable section
  * headers for runtime requirements
  * */
+fn main() -> io::Result<()> {
+    let mut operations_stack_size: usize = 1024;
+    let mut variables_stack_size: usize = 1024;
+    let mut call_stack_size: usize = 1024;
+    let mut path = None;
 
-fn main() {
-    let source = fs::read_to_string("main.pas").unwrap();
+    let mut args: Vec<String> = env::args().skip(1).rev().collect();
 
-    match assembling::Assembler::new(compiling::Compiler::new(parsing::Parser::new(lexing::Lexer::new(source)))).assemble() {
+    while let Some(s) = args.pop() {
+        match &s[..] {
+            "-o" => operations_stack_size = args.pop().expect("expected stack size").parse().expect("invalid stack size"),
+            "-v" => variables_stack_size = args.pop().expect("expected stack size").parse().expect("invalid stack size"),
+            "-c" => call_stack_size = args.pop().expect("expected stack size").parse().expect("invalid stack size"),
+            _ => path = Some(s)
+        }
+    }
+
+    let source = fs::read_to_string(path.expect("expected a path"))?;
+
+    match assembling::Assembler::new(compiling::Compiler::new(parsing::Parser::new(lexing::Lexer::new(source)))).assemble(operations_stack_size, variables_stack_size, call_stack_size) {
         Ok(b) => {
-            fs::File::create("bin/main.pab").unwrap().write_all(&b).unwrap();
+            fs::File::create("bin/main.pab").unwrap().write_all(&b)?;
         },
         Err(s) => eprintln!("{}", s),
     }
 
-/*     loop {
-        match assembling::Assembler::new(compiling::Compiler::new(parsing::Parser::new(lexing::Lexer::new(utils::input("> ").unwrap())))).assemble() {
-            Ok(b) => executing::Executer::new(b).run(),
-            Err(s) => eprintln!("{}", s),
-        }
-    } */
+    Ok(())
 }
