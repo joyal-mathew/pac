@@ -30,6 +30,8 @@ pub enum Operation {
     Length,
     Pop,
     Push,
+    GetCapacity,
+    SetCapacity,
 }
 
 #[derive(Debug)]
@@ -247,7 +249,8 @@ impl Parser {
     );
     parse_rule!(
         name = push, parent = logical_or,
-        Operator::Push => Operation::Push
+        Operator::Push => Operation::Push,
+        Operator::SetCapacity => Operation::SetCapacity
     );
     parse_rule!(
         name = logical_or, parent = logical_and,
@@ -383,6 +386,7 @@ impl Parser {
             Token::Operator(Operator::BitwiseNot) => Ok(Expression::UnaryOperation(Operation::BitwiseNot, Box::new(self.term()?))),
             Token::Operator(Operator::Length) => Ok(Expression::UnaryOperation(Operation::Length, Box::new(self.term()?))),
             Token::Operator(Operator::Pop) => Ok(Expression::UnaryOperation(Operation::Pop, Box::new(self.term()?))),
+            Token::Operator(Operator::GetCapacity) => Ok(Expression::UnaryOperation(Operation::GetCapacity, Box::new(self.term()?))),
             Token::Operator(Operator::OpenParenthesis) => {
                 let expr = self.expression()?;
                 expect!(self, Token::Operator(Operator::CloseParenthesis));

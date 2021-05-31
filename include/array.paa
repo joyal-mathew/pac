@@ -129,3 +129,44 @@ ret
 #Fjoin
 sys @makestring
 ret
+
+#Pget_cap
+push_l 16
+i_add
+deref
+ret
+
+#Pset_cap
+swap
+clone 16
+clean
+push_l 8
+i_add
+deref
+clone 16
+i_lte
+br .gc_allowed
+push_l !underflow
+sys @err
+#gc_allowed
+clean
+clone 16
+swap
+push_l 16
+i_add
+swap
+store
+push_l 24
+i_add
+deref
+swap
+sys @realloc
+clone 16
+swap
+push_l 24
+i_add
+swap
+store
+clean
+clean
+ret
