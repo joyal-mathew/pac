@@ -3,14 +3,6 @@
 #include "data.h"
 
 void brk() {
-    printf("\n----\n");
-    for (int i = 0; i <= 64; i += 8) {
-        printf("%lld ", AS(long long, var_stack + i));
-    }
-    printf("\n----\n");
-
-    // TODO: figure out why can't free op_stack/program here
-
     exit(0);
 }
 
@@ -29,18 +21,15 @@ void flush() {
 
 void alloc() {
     AS(size_t, op_stack + sp - 8) = (size_t) malloc(AS(size_t, op_stack + sp - 8));
-    // printf("ALLOC [%llu]\n", AS(size_t, op_stack + sp - 8));
 }
 
 void realloc_() {
     sp -= 8;
-    // printf("REALLOC [%llu]\n", AS(size_t, op_stack + sp - 8));
     AS(size_t, op_stack + sp - 8) = (size_t) realloc((void *) AS(size_t, op_stack + sp - 8), AS(size_t, op_stack + sp));
 }
 
 void dealloc() {
     sp -= 8;
-    // printf("DEALLOC [%llu]\n", AS(size_t, op_stack + sp));
     free((void *) AS(size_t, op_stack + sp));
 }
 

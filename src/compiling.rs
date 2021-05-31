@@ -141,10 +141,6 @@ impl Compiler {
 
         self.program = format!("{}\n{}", self.program, self.data);
 
-        for line in self.program.split('\n') {
-            println!("{}", line);
-        }
-
         Ok(&self.program)
     }
 

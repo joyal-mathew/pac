@@ -8,10 +8,6 @@ mod assembling;
 
 use std::{ fs, env, io::{ self, prelude::Write } };
 
-/* TODO:
- * make variable section
- * headers for runtime requirements
- * */
 fn main() -> io::Result<()> {
     let mut operations_stack_size: usize = 1024;
     let mut variables_stack_size: usize = 1024;
