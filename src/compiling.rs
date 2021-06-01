@@ -602,7 +602,7 @@ impl Compiler {
                 let type_l = self.calculate(&*lhs, scope)?.clone();
 
                 if let (Type::Array(inner), Operation::Push) = (&type_l, op) {
-                    if type_r == **inner {
+                    if Self::types_match(*inner.clone(), type_r.clone()) {
                         self.call(Some(".Ppush"), scope, false);
 
                         return Ok(type_l);
@@ -610,6 +610,16 @@ impl Compiler {
                 }
 
                 match (type_r.clone(), type_l.clone()) {
+                    (Type::Int, Type::Array(_)) => {
+                        if let Operation::SetCapacity = op {
+                            self.call(Some(".Pset_cap"), scope, false);
+
+                            Ok(type_l)
+                        }
+                        else {
+                            err!("the operation ({:?}) is not defined for these types: {:?} and {:?}", op, type_r, type_l)
+                        }
+                    }
                     (Type::Int, Type::Int) => match op {
                         Operation::Add => { emit!(self, "i_add"); Ok(Type::Int) }
                         Operation::Subtract => { emit!(self, "i_sub"); Ok(Type::Int) }
@@ -664,6 +674,10 @@ impl Compiler {
                             emit!(self, "push_l 8");
                             emit!(self, "swap");
                             emit!(self, "i_div");
+                            return Ok(Type::Int);
+                        }
+                        Operation::GetCapacity => {
+                            self.call(Some(".Pget_cap"), scope, false);
                             return Ok(Type::Int);
                         }
                         Operation::Pop => {

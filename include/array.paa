@@ -66,6 +66,18 @@ i_add
 swap
 store
 clean
+copy
+push_l 8
+i_add
+copy
+push_l 8
+i_add
+swap
+deref
+push_l 8
+i_add
+store
+clean
 #p_norealloc
 swap
 clone 16
@@ -134,10 +146,15 @@ ret
 push_l 16
 i_add
 deref
+push_l 8
+swap
+i_div
 ret
 
 #Pset_cap
 swap
+push_l 8
+i_mul
 clone 16
 clean
 push_l 8
@@ -156,7 +173,7 @@ push_l 16
 i_add
 swap
 store
-push_l 24
+push_l 8
 i_add
 deref
 swap
