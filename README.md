@@ -162,7 +162,7 @@ Step | File                | Purpose
 2    | `src/parsing.rs`    | Build a tree which represents what the program is doing.
 3    | `src/compiling.rs`  | Convert the tree into a list of simple steps.
 4    | `src/assembling.rs` | Convert the steps into bytes which can be processed easily.
-5    | `vmsrc`             | Execute the instructions encoding into the bytes.
+5    | `vmsrc`             | Execute the instructions encoded into the bytes.
 
 *tokens* are the most simple components of the language which carry meaning on their own.
 They are the building blocks. <br>
