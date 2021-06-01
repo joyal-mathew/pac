@@ -144,10 +144,12 @@ println_str(STR); # prints with trailing newline and flushes stream
 print_string(STRING);
 println_string(STRING);
 ```
-#### Array Functions
+#### Arrays
 ```
 join(ARRAY); # joins an array of strs and returns a string
-capacity(ARRAY, INT) # sets the capacity of an array
+
+`ARRAY; # returns the capacity of an array
+ARRAY <| 50 # sets the capacity of an array and returns the array itself
 ```
 ***
 The top level can only consist of functions. When the program is run the main
