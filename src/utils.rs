@@ -20,6 +20,16 @@ macro_rules! parse_rule {
     };
 }
 
+macro_rules! derive_display {
+    ($name: ident) => {
+    impl fmt::Display for $name {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "{:?}", self)
+            }
+        }
+    }
+}
+
 macro_rules! err {
     ($($arg: tt)*) => (Err(format!($($arg)*)));
 }
@@ -30,7 +40,7 @@ macro_rules! expect {
             $self.advance()?;
         }
         else {
-            return err!("expected {:?}, got {:?}", stringify!($token), $self.current);
+            return err!("expected {}, got {}", stringify!($token), $self.current);
         }
     };
 }

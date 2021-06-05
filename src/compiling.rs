@@ -383,13 +383,13 @@ impl Compiler {
 
                 if let Type::Function(ret, params) = signature {
                     if called_sig.len() != params.len() || called_sig.iter().rev().zip(params.iter()).any(|s| !Self::types_match(s.1.clone(), s.0.clone())) {
-                        return err!("incorrect signature on function call, expected {:?} got {:?}", params, called_sig);
+                        return err!("incorrect signature on function call, expected {} got {}", params.iter().map(|x| x.to_string()).collect::<Vec<String>>().join(", "), called_sig.iter().map(|x| x.to_string()).collect::<Vec<String>>().join(", "));
                     }
 
                     Ok(*ret)
                 }
                 else {
-                    err!("{:?} cannot be called", signature)
+                    err!("{} cannot be called", signature)
                 }
             }
             Expression::Index(arr, idx) => {
@@ -403,7 +403,7 @@ impl Compiler {
                         emit!(self, "deref");
                         let idx_type = self.calculate(idx, scope)?;
                         if idx_type != Type::Int {
-                            return err!("{:?} cannot index", idx_type);
+                            return err!("{} cannot index", idx_type);
                         }
                         emit!(self, "push_l 8");
                         emit!(self, "i_mul");
@@ -427,7 +427,7 @@ impl Compiler {
                         emit!(self, "deref");
                         let idx_type = self.calculate(idx, scope)?;
                         if idx_type != Type::Int {
-                            return err!("{:?} cannot index", idx_type);
+                            return err!("{} cannot index", idx_type);
                         }
                         emit!(self, "clone 16");
                         self.call(Some(".Pindex_check"), scope, true);
@@ -442,7 +442,7 @@ impl Compiler {
 
                         Ok(Type::Str)
                     }
-                    _ => err!("{:?} cannot be indexed", arr_type),
+                    _ => err!("{} cannot be indexed", arr_type),
                 }
             }
             Expression::BinaryOperation(op, lhs, rhs) => {
@@ -478,7 +478,7 @@ impl Compiler {
                                         emit!(self, "deref");
                                         let idx_type = self.calculate(idx, scope)?;
                                         if idx_type != Type::Int {
-                                            return err!("{:?} cannot index", idx_type);
+                                            return err!("{} cannot index", idx_type);
                                         }
                                         emit!(self, "push_l 8");
                                         emit!(self, "i_mul");
@@ -507,7 +507,7 @@ impl Compiler {
                                         emit!(self, "deref");
                                         let idx_type = self.calculate(idx, scope)?;
                                         if idx_type != Type::Int {
-                                            return err!("{:?} cannot index", idx_type);
+                                            return err!("{} cannot index", idx_type);
                                         }
                                         emit!(self, "clone 16");
                                         self.call(Some(".Pindex_check"), scope, true);
@@ -539,7 +539,7 @@ impl Compiler {
                                             err!("only str can set a string")
                                         }
                                     }
-                                    _ => err!("{:?} cannot be indexed", arr_type),
+                                    _ => err!("{} cannot be indexed", arr_type),
                                 }
                             }
                             _ => err!("expected assignable value")
@@ -617,7 +617,7 @@ impl Compiler {
                             Ok(type_l)
                         }
                         else {
-                            err!("the operation ({:?}) is not defined for these types: {:?} and {:?}", op, type_r, type_l)
+                            err!("the operation ({}) is not defined for these types: {} and {}", op, type_r, type_l)
                         }
                     }
                     (Type::Int, Type::Int) => match op {
@@ -643,7 +643,7 @@ impl Compiler {
                         Operation::BitwiseAnd => { emit!(self, "b_and"); Ok(Type::Int) }
                         Operation::BitwiseOr => { emit!(self, "b_or"); Ok(Type::Int) }
                         Operation::BitwiseXor => { emit!(self, "b_xor"); Ok(Type::Int) }
-                        _ => err!("the operation ({:?}) is not defined for these types: {:?} and {:?}", op, type_r, type_l),
+                        _ => err!("the operation ({}) is not defined for these types: {} and {}", op, type_r, type_l),
                     }
                     (Type::Float, Type::Float) => match op {
                         Operation::Add => { emit!(self, "f_add"); Ok(Type::Float) }
@@ -659,7 +659,7 @@ impl Compiler {
                         Operation::GreaterOrEqual => { emit!(self, "f_gte"); Ok(Type::Float) }
                         _ => err!("the operation is not defined for these types"),
                     }
-                    _ => err!("the operation ({:?}) is not defined for these types: {:?} and {:?}", op, type_r, type_l),
+                    _ => err!("the operation ({}) is not defined for these types: {} and {}", op, type_r, type_l),
                 }
             }
             Expression::UnaryOperation(op, arg) => {
@@ -783,7 +783,7 @@ impl Compiler {
             Ok(stated)
         }
         else {
-            err!("mimatched types {:?} and {:?}", stated, seen)
+            err!("mimatched types {} and {}", stated, seen)
         }
     }
 

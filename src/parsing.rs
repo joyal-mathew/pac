@@ -1,6 +1,6 @@
 use crate::utils::Result;
 use crate::lexing::*;
-use std::mem;
+use std::{ mem, fmt };
 
 #[derive(Debug)]
 pub enum Operation {
@@ -45,6 +45,9 @@ pub enum Symbol {
     Array(Vec<Expression>),
     Type(Type),
 }
+
+derive_display!(Operation);
+derive_display!(Symbol);
 
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -232,7 +235,7 @@ impl Parser {
             }
         }
         if idents.len() < 1 {
-            err!("expected at least one identifier {:?}", typ)
+            err!("expected at least one identifier {}", typ)
         }
         else {
             Ok(Statement::Declaration(typ, idents))
@@ -411,7 +414,7 @@ impl Parser {
                 expect!(self, Token::Operator(Operator::CloseBrace));
                 Ok(Expression::Term(Symbol::Array(items)))
             }
-            t => err!("invalid token: {:?}", t),
+            t => err!("invalid token: {}", t),
         }
     }
 

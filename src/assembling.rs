@@ -100,7 +100,7 @@ impl Assembler {
                     self.output.extend(&(l as u64).serialize());
                 }
                 else {
-                    return err!("undefined label {}", command);
+                    return if command == ".Fmain" { err!("no main function found") } else { err!("undefined label {}", command) };
                 }
             }
             else if command.starts_with('@') {

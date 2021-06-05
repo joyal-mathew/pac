@@ -1,5 +1,5 @@
 use crate::utils::Result;
-use std::collections::HashMap;
+use std::{ collections::HashMap, fmt };
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Keyword {
@@ -94,6 +94,11 @@ pub enum Token {
 
     EndOfFile,
 }
+
+derive_display!(Keyword);
+derive_display!(Operator);
+derive_display!(Type);
+derive_display!(Token);
 
 pub struct Lexer {
     chars: Vec<char>,
