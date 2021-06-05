@@ -39,6 +39,14 @@ fn create_index_map(arr: &[&'static str]) -> HashMap<&'static str, u8> {
     map
 }
 
+pub struct Options {
+    pub operations_stack_size: usize,
+    pub variables_stack_size: usize,
+    pub call_stack_size: usize,
+
+    pub asm_output: bool,
+}
+
 pub struct Assembler {
     compiler: Compiler,
     output: Vec<u8>,
@@ -63,12 +71,16 @@ impl Assembler {
         }
     }
 
-    pub fn assemble(mut self, operations_stack_size: usize, variables_stack_size: usize, call_stack_size: usize) -> Result<Vec<u8>> {
-        self.output.extend(&(operations_stack_size as u64).serialize());
-        self.output.extend(&(variables_stack_size as u64).serialize());
-        self.output.extend(&(call_stack_size as u64).serialize());
+    pub fn assemble(mut self, options: Options) -> Result<Vec<u8>> {
+        self.output.extend(&(options.operations_stack_size as u64).serialize());
+        self.output.extend(&(options.variables_stack_size as u64).serialize());
+        self.output.extend(&(options.call_stack_size as u64).serialize());
 
-        let commands: Vec<String> = self.compiler.compile()?.split_ascii_whitespace().map(|s| s.to_string()).collect();
+        let compiled = self.compiler.compile()?;
+        if options.asm_output {
+            println!("{}", compiled);
+        }
+        let commands: Vec<String> = compiled.split_ascii_whitespace().map(|s| s.to_string()).collect();
 
         for command in &commands {
             match command {
