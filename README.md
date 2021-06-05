@@ -197,5 +197,5 @@ Three stacks are used in execution.
 The size of these stacks default to 1KiB but can be set with command line arguments
 `pac main.pas -o 512 -v 512 -c 512`
 
-Assebly can be printed with a flag
+Assembly can be printed with a flag
 `pac main.pas -a`
