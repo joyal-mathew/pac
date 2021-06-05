@@ -383,7 +383,7 @@ impl Compiler {
 
                 if let Type::Function(ret, params) = signature {
                     if called_sig.len() != params.len() || called_sig.iter().rev().zip(params.iter()).any(|s| !Self::types_match(s.1.clone(), s.0.clone())) {
-                        return err!("incorrect signature on function call, expected ({}) got ({})", params.iter().map(|x| x.to_string()).collect::<Vec<String>>().join(", "), called_sig.iter().map(|x| x.to_string()).collect::<Vec<String>>().join(", "));
+                        return err!("incorrect signature on function call, expected ({}) got ({})", params.iter().map(|x| x.to_string()).collect::<Vec<String>>().join(", "), called_sig.iter().rev().map(|x| x.to_string()).collect::<Vec<String>>().join(", "));
                     }
 
                     Ok(*ret)
