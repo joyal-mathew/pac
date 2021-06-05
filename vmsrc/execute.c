@@ -7,7 +7,7 @@ int main(int argc, char **argv) {
     FILE *fptr;
     size_t len;
 
-    fopen_s(&fptr, "bin/main.pab", "rb");
+    fopen_s(&fptr, argv[1], "rb");
     fseek(fptr, 0, SEEK_END);
     len = ftell(fptr);
     program = malloc(len);

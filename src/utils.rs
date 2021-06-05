@@ -21,7 +21,7 @@ macro_rules! parse_rule {
 }
 
 macro_rules! err {
-    ($($arg: tt)*) => (Err(format!("Error from {}:{} -- ", file!(), line!()) + &format!($($arg)*)));
+    ($($arg: tt)*) => (Err(format!($($arg)*)));
 }
 
 macro_rules! expect {
