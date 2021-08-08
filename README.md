@@ -68,7 +68,7 @@ end
         5. `{` `}` (arrays)
         6. `;`
         7. `,` (separating parameters)
-        8. `` ` `` (deallocating arrays and strings)
+        8. `` ` `` (getting the capacity of an array)
     6. Sequence
         1. `@` (pop from array)
         2. `<-` (push to array and return the array itself)
